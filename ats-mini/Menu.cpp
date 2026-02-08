@@ -265,7 +265,7 @@ int getTotalUTCOffsets() { return(ITEM_COUNT(utcOffsets)); }
 //
 uint8_t uiLayoutIdx = 0;
 static const char *uiLayoutDesc[] =
-{ "Default", "S-Meter" };
+{ "Default", "S-Meter", "Signal scale" };
 
 //
 // USB Port Mode Menu

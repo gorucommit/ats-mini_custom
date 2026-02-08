@@ -34,6 +34,11 @@ static uint8_t  scanMaxSNR;
 static inline uint8_t min(uint8_t a, uint8_t b) { return(a<b? a:b); }
 static inline uint8_t max(uint8_t a, uint8_t b) { return(a>b? a:b); }
 
+bool scanHasData(void)
+{
+  return(scanStatus == SCAN_DONE);
+}
+
 float scanGetRSSI(uint16_t freq)
 {
   // Input frequency must be in range of existing data

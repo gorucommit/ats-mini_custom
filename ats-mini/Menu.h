@@ -47,8 +47,9 @@
 #define CMD_ABOUT      0x3000 //-+
 
 // UI Layouts
-#define UI_DEFAULT  0
-#define UI_SMETER   1
+#define UI_DEFAULT      0
+#define UI_SMETER       1
+#define UI_SIGNAL_SCALE 2
 
 // Seek modes
 #define SEEK_DEFAULT  0

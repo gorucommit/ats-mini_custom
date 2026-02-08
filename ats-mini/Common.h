@@ -186,6 +186,7 @@ bool drawBattery(int x, int y);
 
 // Scan.c
 void scanRun(uint16_t centerFreq, uint16_t step);
+bool scanHasData(void);
 float scanGetRSSI(uint16_t freq);
 float scanGetSNR(uint16_t freq);
 

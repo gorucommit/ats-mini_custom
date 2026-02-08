@@ -425,6 +425,40 @@ void drawScanGraphs(uint32_t freq)
 }
 
 //
+// Draw tuner scale with signal strength markers when scan data available (Berndt-style).
+//
+void drawScaleWithSignals(uint32_t freq)
+{
+  drawScale(freq);
+
+  if(!scanHasData()) return;
+
+  const Band *band = getCurrentBand();
+  int16_t slack = 3;
+  int16_t offset = ((freq % 10) / 10.0 + slack) * 8;
+  uint32_t scaleFreq = freq / 10 - 20 - slack;
+  uint32_t minFreq = band->minimumFreq / 10;
+  uint32_t maxFreq = band->maximumFreq / 10;
+
+  const float noiseBaseline = 0.15f;
+  const float range = 1.0f - noiseBaseline;
+
+  for(int i = 0; i < (slack + 41 + slack); i++, scaleFreq++)
+  {
+    if(scaleFreq < minFreq || scaleFreq > maxFreq) continue;
+
+    int16_t x = i * 8 - offset;
+    float strength = scanGetRSSI(scaleFreq * 10);
+    if(strength <= noiseBaseline) continue;
+
+    float aboveNoise = (strength - noiseBaseline) / range;
+    int barHeight = 2 + (int)(36.0f * aboveNoise);
+    if(barHeight > 2)
+      spr.fillRect(x, 169 - barHeight, 2, barHeight, TH.scan_rssi);
+  }
+}
+
+//
 // Draw screen according to given command
 //
 void drawScreen(const char *statusLine1, const char *statusLine2)
@@ -445,6 +479,9 @@ void drawScreen(const char *statusLine1, const char *statusLine2)
   {
     case UI_SMETER:
       drawLayoutSmeter(statusLine1, statusLine2);
+      break;
+    case UI_SIGNAL_SCALE:
+      drawLayoutSignalScale(statusLine1, statusLine2);
       break;
     default:
       drawLayoutDefault(statusLine1, statusLine2);
