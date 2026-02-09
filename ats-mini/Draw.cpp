@@ -425,37 +425,91 @@ void drawScanGraphs(uint32_t freq)
 }
 
 //
+// Band-map line: 1 = broadcast (red), 2 = amateur (blue), 0 = neither.
+// Frequencies in kHz. Broadcast/amateur segments match the scale frequency window.
+//
+struct BandMapEdge { uint32_t lo; uint32_t hi; };
+
+static int getBandMapType(uint32_t freqKhz)
+{
+  static const BandMapEdge broadcast[] = {
+    {  520,  1602 }, { 2300,  2500 }, { 3200,  3400 }, { 3900,  4000 },
+    { 4750,  5060 }, { 5800,  6325 }, { 7200,  7450 }, { 9400,  9900 },
+    {11600, 12100 }, {13570, 13870 }, {15100, 15800 },
+    { 0xFFFFFFFFu, 0 }
+  };
+  static const BandMapEdge amateur[] = {
+    { 1810,  2000 }, { 3500,  3800 }, { 5250,  5450 }, { 7000,  7200 },
+    {10100, 10150 }, {14000, 14530 },
+    { 0xFFFFFFFFu, 0 }
+  };
+  for(unsigned n = 0; broadcast[n].lo != 0xFFFFFFFFu; n++)
+    if(freqKhz >= broadcast[n].lo && freqKhz <= broadcast[n].hi) return 1;
+  for(unsigned n = 0; amateur[n].lo != 0xFFFFFFFFu; n++)
+    if(freqKhz >= amateur[n].lo && freqKhz <= amateur[n].hi) return 2;
+  return 0;
+}
+
+//
+// Draw 1-pixel band-map line on the bottom row of the display (y=169).
+// Red = broadcast bands, blue = amateur bands. Uses same scale mapping as drawScale.
+//
+static void drawBandMapLine(uint32_t centerFreqKhz)
+{
+  const int16_t slack = 3;
+  const int16_t offset = ((centerFreqKhz % 10) / 10.0f + slack) * 8;
+  const uint32_t scaleFreq = centerFreqKhz / 10 - 20 - slack;  // in 10 kHz steps
+  const int16_t y = 169;
+  const uint16_t band_red  = 0xF800;
+  const uint16_t band_blue = 0x001F;
+
+  for(int x = 0; x < 320; x++)
+  {
+    int i = (x + offset) / 8;
+    uint32_t freqKhz = (scaleFreq + i) * 10;
+    int t = getBandMapType(freqKhz);
+    if(t == 1)
+      spr.drawPixel(x, y, band_red);
+    else if(t == 2)
+      spr.drawPixel(x, y, band_blue);
+  }
+}
+
+//
 // Draw tuner scale with signal strength markers when scan data available (Berndt-style).
 //
 void drawScaleWithSignals(uint32_t freq)
 {
   drawScale(freq);
 
-  if(!scanHasData()) return;
-
-  const Band *band = getCurrentBand();
-  int16_t slack = 3;
-  int16_t offset = ((freq % 10) / 10.0 + slack) * 8;
-  uint32_t scaleFreq = freq / 10 - 20 - slack;
-  uint32_t minFreq = band->minimumFreq / 10;
-  uint32_t maxFreq = band->maximumFreq / 10;
-
-  const float noiseBaseline = 0.15f;
-  const float range = 1.0f - noiseBaseline;
-
-  for(int i = 0; i < (slack + 41 + slack); i++, scaleFreq++)
+  if(scanHasData())
   {
-    if(scaleFreq < minFreq || scaleFreq > maxFreq) continue;
+    const Band *band = getCurrentBand();
+    int16_t slack = 3;
+    int16_t offset = ((freq % 10) / 10.0 + slack) * 8;
+    uint32_t scaleFreq = freq / 10 - 20 - slack;
+    uint32_t minFreq = band->minimumFreq / 10;
+    uint32_t maxFreq = band->maximumFreq / 10;
 
-    int16_t x = i * 8 - offset;
-    float strength = scanGetRSSI(scaleFreq * 10);
-    if(strength <= noiseBaseline) continue;
+    const float noiseBaseline = 0.15f;
+    const float range = 1.0f - noiseBaseline;
 
-    float aboveNoise = (strength - noiseBaseline) / range;
-    int barHeight = 2 + (int)(36.0f * aboveNoise);
-    if(barHeight > 2)
-      spr.fillRect(x, 169 - barHeight, 2, barHeight, TH.scan_rssi);
+    for(int i = 0; i < (slack + 41 + slack); i++, scaleFreq++)
+    {
+      if(scaleFreq < minFreq || scaleFreq > maxFreq) continue;
+
+      int16_t x = i * 8 - offset;
+      float strength = scanGetRSSI(scaleFreq * 10);
+      if(strength <= noiseBaseline) continue;
+
+      float aboveNoise = (strength - noiseBaseline) / range;
+      int barHeight = 2 + (int)(36.0f * aboveNoise);
+      if(barHeight > 2)
+        spr.fillRect(x, 169 - barHeight, 2, barHeight, TH.scan_rssi);
+    }
   }
+
+  drawBandMapLine(freq);
 }
 
 //
