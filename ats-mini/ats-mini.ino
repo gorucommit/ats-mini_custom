@@ -41,15 +41,13 @@ bool seekStop = false;        // G8PTN: Added flag to abort seeking on rotary en
 bool pushAndRotate = false;   // Push and rotate is active, ignore the long press
 static bool longPressSleepToggled = false;  // Toggle sleep only once per hold
 
-long elapsedRSSI = millis();
-long elapsedButton = millis();
+uint32_t elapsedRSSI = millis();
 
-long lastStrengthCheck = millis();
-long lastRDSCheck = millis();
-long lastNTPCheck = millis();
-long lastScheduleCheck = millis();
+uint32_t lastRDSCheck = millis();
+uint32_t lastNTPCheck = millis();
+uint32_t lastScheduleCheck = millis();
 
-long elapsedCommand = millis();
+uint32_t elapsedCommand = millis();
 volatile int16_t encoderCount = 0;
 volatile int16_t encoderCountAccel = 0;
 uint16_t currentFrequency;
@@ -74,7 +72,7 @@ uint8_t FmRegionIdx = 0;                // FM Region
 
 uint16_t currentBrt = 130;              // Display brightness, range = 10 to 255 in steps of 5
 uint16_t currentSleep = DEFAULT_SLEEP;  // Display sleep timeout, range = 0 to 255 in steps of 5
-long elapsedSleep = millis();           // Display sleep timer
+uint32_t elapsedSleep = millis();       // Display sleep timer
 bool zoomMenu = false;                  // Display zoomed menu item
 int8_t scrollDirection = 1;             // Menu scroll direction
 
@@ -125,20 +123,17 @@ void setup()
   pinMode(PIN_AMP_EN, OUTPUT);
   digitalWrite(PIN_AMP_EN, LOW);
 
-  // Enable SI4732 VDD
+  // Enable SI4732 VDD - start power-on NOW, do display init while it stabilizes
   pinMode(PIN_POWER_ON, OUTPUT);
   digitalWrite(PIN_POWER_ON, HIGH);
-  delay(100);
-
-  // The line below may be necessary to setup I2C pins on ESP32
-  Wire.begin(ESP32_I2C_SDA, ESP32_I2C_SCL);
+  // (no delay here - we'll do display init during the power-on settling time)
 
   // TFT display brightness control (PWM)
   // Note: At brightness levels below 100%, switching from the PWM may cause power spikes and/or RFI
   ledcAttach(PIN_LCD_BL, 16000, 8);  // Pin assignment, 16kHz, 8-bit
   ledcWrite(PIN_LCD_BL, 0);          // Default value 0%
 
-  // TFT display setup
+  // TFT display setup (runs in parallel with SI4732 power-on)
   tft.begin();
   tft.setRotation(3);
 
@@ -169,6 +164,18 @@ void setup()
   spr.setSwapBytes(true);
   spr.setFreeFont(&Orbitron_Light_24);
   spr.setTextColor(TH.text, TH.bg);
+
+  // Show splash screen immediately so user sees something right away
+  spr.fillSprite(TH.bg);
+  spr.setTextColor(TH.text);
+  spr.drawString(RECEIVER_NAME, 160, 70);
+  spr.setTextColor(TH.text_muted);
+  spr.drawString("Starting...", 160, 105, 2);
+  spr.pushSprite(0, 0);
+  ledcWrite(PIN_LCD_BL, 130);  // Turn backlight on early
+
+  // Now init I2C (SI4732 has had ~70ms to stabilize during display init)
+  Wire.begin(ESP32_I2C_SDA, ESP32_I2C_SCL);
 
   // Press and hold Encoder button to force an preferences reset
   // Note: preferences reset is recommended after firmware updates
@@ -253,11 +260,10 @@ void setup()
 
   // SI4732 STARTUP!
   selectBand(bandIdx, false);
-  delay(50);
   rx.setVolume(volume);
   rx.setMaxSeekTime(SEEK_TIMEOUT);
 
-  // Draw display for the first time
+  // Draw display for the first time (user already sees splash, now show real UI)
   drawScreen();
   ledcWrite(PIN_LCD_BL, currentBrt);
 
@@ -267,10 +273,12 @@ void setup()
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), rotaryEncoder, CHANGE);
   attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_B), rotaryEncoder, CHANGE);
 
-  // Connect WiFi, if necessary
-  netInit(wifiModeIdx);
+  // Defer WiFi connection to background — don't block startup
+  // netTickTime() in loop() will handle the actual connection
+  if(wifiModeIdx != NET_OFF)
+    netRequestConnect();
 
-  // Start Bluetooth LE, if necessary
+  // Start Bluetooth LE (fast, non-blocking)
   bleInit(bleModeIdx);
 }
 
@@ -826,10 +834,13 @@ void loop()
       {
         case CMD_NONE:
         case CMD_SCAN:
-          // Tuning
-          needRedraw |= doTune(encCountAccel);
-          // Current frequency may have changed
-          prefsRequestSave(SAVE_CUR_BAND);
+          // Skip tuning while waterfall is recording (radio is on different freq)
+          if(!waterfallIsRecording())
+          {
+            needRedraw |= doTune(encCountAccel);
+            // Current frequency may have changed
+            prefsRequestSave(SAVE_CUR_BAND);
+          }
           break;
         case CMD_FREQ:
           // Digit tuning

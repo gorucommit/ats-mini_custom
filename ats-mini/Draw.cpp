@@ -259,9 +259,14 @@ void drawFrequency(uint32_t freq, int x, int y, int ux, int uy, uint8_t hl)
 void drawPiggy(int x, int y)
 {
   static uint16_t buf[PIGGY_W * PIGGY_H];
-  const size_t n = (size_t)PIGGY_W * PIGGY_H;
-  for(size_t i = 0; i < n; i++)
-    buf[i] = pgm_read_word(&piggyBitmap[i]);
+  static bool loaded = false;
+  if(!loaded)
+  {
+    const size_t n = (size_t)PIGGY_W * PIGGY_H;
+    for(size_t i = 0; i < n; i++)
+      buf[i] = pgm_read_word(&piggyBitmap[i]);
+    loaded = true;
+  }
   spr.pushImage(x, y, PIGGY_W, PIGGY_H, buf);
 }
 

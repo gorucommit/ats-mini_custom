@@ -71,10 +71,10 @@ void netRequestConnect()
 
 void netTickTime()
 {
-  // Connect to WiFi if requested
+  // Connect to WiFi if requested (background, don't block with status display)
   if(itIsTimeToWiFi && ((millis() - connectTime) > CONNECT_TIME))
   {
-    netInit(wifiModeIdx);
+    netInit(wifiModeIdx, false);
     connectTime = millis();
     itIsTimeToWiFi = false;
   }
@@ -171,8 +171,17 @@ void netInit(uint8_t netMode, bool showStatus)
 
     // Get NTP time from the network
     clockReset();
-    for(int j=0 ; j<10 ; j++)
-      if(ntpSyncTime()) break; else delay(500);
+    if(showStatus)
+    {
+      // Blocking NTP sync (only during interactive startup)
+      for(int j=0 ; j<10 ; j++)
+        if(ntpSyncTime()) break; else delay(500);
+    }
+    else
+    {
+      // Non-blocking: try once, loop() will retry via NTP_CHECK_TIME
+      ntpSyncTime();
+    }
   }
 
   // If only connected to sync...

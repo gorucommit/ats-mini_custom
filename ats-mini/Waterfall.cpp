@@ -6,7 +6,8 @@
 #include <LittleFS.h>
 #include <FS.h>
 
-static uint8_t wfBuffer[WF_TIME_ROWS][WF_FREQ_BINS];
+// Dynamically allocated when recording starts, freed when done (saves 80KB idle)
+static uint8_t (*wfBuffer)[WF_FREQ_BINS] = nullptr;
 static uint8_t wfState = 0;  // 0=idle, 1=recording
 static bool wfStopRequested = false;
 
@@ -92,6 +93,11 @@ bool waterfallStart(void)
   wfMinBU = minF;
   wfMaxBU = maxF;
   wfStepBU = stepBandUnits;
+  // Allocate recording buffer (80KB)
+  if(!wfBuffer)
+    wfBuffer = (uint8_t(*)[WF_FREQ_BINS])malloc(WF_TIME_ROWS * WF_FREQ_BINS);
+  if(!wfBuffer) return false;
+
   wfFreqIndex = 0;
   wfRowIndex = 0;
   wfIntervalMs = 0;
@@ -113,6 +119,9 @@ static void waterfallStop(void)
   wfState = WF_IDLE;
   if (wfRowIndex > 0 && wfBins > 0)
     writeWaterfallFile();
+
+  // Free recording buffer (reclaim 80KB)
+  if(wfBuffer) { free(wfBuffer); wfBuffer = nullptr; }
 
   // Restore user's original frequency
   rx.setFrequency(wfSavedFreq);
