@@ -46,6 +46,7 @@ void drawLayoutSignalScale(const char *statusLine1, const char *statusLine2)
     FUNIT_OFFSET_X, FUNIT_OFFSET_Y,
     currentCmd == CMD_FREQ ? getFreqInputPos() + (pushAndRotate ? 0x80 : 0) : 100
   );
+  drawPiggy(PIGGY_OFFSET_X, PIGGY_OFFSET_Y);
 
   // Show station or channel name, if present
   if(*getStationName() == 0xFF)

@@ -5,6 +5,9 @@
 #include "Menu.h"
 #include "Ble.h"
 #include "Draw.h"
+#include "piggy.h"
+
+#include <pgmspace.h>
 
 //
 // Draw preferences write indicator
@@ -248,6 +251,18 @@ void drawFrequency(uint32_t freq, int x, int y, int ux, int uy, uint8_t hl)
       spr.fillRoundRect(li->x, li->y - 1, li->w, 3, 1, TH.freq_hl);
     }
   }
+}
+
+//
+// Draw tiny piggy mascot (from piggy.h bitmap)
+//
+void drawPiggy(int x, int y)
+{
+  static uint16_t buf[PIGGY_W * PIGGY_H];
+  const size_t n = (size_t)PIGGY_W * PIGGY_H;
+  for(size_t i = 0; i < n; i++)
+    buf[i] = pgm_read_word(&piggyBitmap[i]);
+  spr.pushImage(x, y, PIGGY_W, PIGGY_H, buf);
 }
 
 //
