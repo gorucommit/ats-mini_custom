@@ -491,21 +491,39 @@ void drawScaleWithSignals(uint32_t freq)
     uint32_t minFreq = band->minimumFreq / 10;
     uint32_t maxFreq = band->maximumFreq / 10;
 
-    const float noiseBaseline = 0.15f;
-    const float range = 1.0f - noiseBaseline;
+    // Baseline = average RSSI over the visible scale range (band scan)
+    float rssiSum = 0.0f;
+    int rssiCount = 0;
+    for(int i = 0; i < (slack + 41 + slack); i++)
+    {
+      uint32_t f = (freq / 10 - 20 - slack) + i;
+      if(f >= minFreq && f <= maxFreq)
+      {
+        rssiSum += scanGetRSSI(f * 10);
+        rssiCount++;
+      }
+    }
+    float rssiBaseline = (rssiCount > 0) ? (rssiSum / (float)rssiCount) : 0.0f;
 
+    scaleFreq = freq / 10 - 20 - slack;
     for(int i = 0; i < (slack + 41 + slack); i++, scaleFreq++)
     {
       if(scaleFreq < minFreq || scaleFreq > maxFreq) continue;
 
       int16_t x = i * 8 - offset;
-      float strength = scanGetRSSI(scaleFreq * 10);
-      if(strength <= noiseBaseline) continue;
+      float rssi = scanGetRSSI(scaleFreq * 10);
+      float snr = scanGetSNR(scaleFreq * 10);
+      float rssiAboveBaseline = (rssi > rssiBaseline) ? (rssi - rssiBaseline) : 0.0f;
 
-      float aboveNoise = (strength - noiseBaseline) / range;
-      int barHeight = 2 + (int)(36.0f * aboveNoise);
+      // Bar = both SNR and RSSI above baseline (show stronger of the two)
+      float level = (rssiAboveBaseline > snr) ? rssiAboveBaseline : snr;
+      if(level <= 0.0f) continue;
+
+      // Normalize level into 0..1 for height (rssiAboveBaseline/snr can exceed 1; cap)
+      if(level > 1.0f) level = 1.0f;
+      int barHeight = 2 + (int)(36.0f * level);
       if(barHeight > 2)
-        spr.fillRect(x, 169 - barHeight, 2, barHeight, TH.scan_rssi);
+        spr.fillRect(x, 169 - barHeight, 2, barHeight, TH.scan_snr);
     }
   }
 
