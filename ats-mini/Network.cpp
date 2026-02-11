@@ -4,7 +4,10 @@
 #include "Utils.h"
 #include "Menu.h"
 #include "Draw.h"
+#include "Waterfall.h"
+#include "waterfall_decoder_script.h"
 
+#include <LittleFS.h>
 #include <WiFi.h>
 #include <WiFiMulti.h>
 #include <WiFiUdp.h>
@@ -315,6 +318,19 @@ static void webInit()
     request->send(200, "text/html", webConfigPage());
   });
 
+  server.on("/waterfall", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    if(waterfallFileExists())
+      request->send(LittleFS, WF_FILE_PATH, "application/octet-stream", true);
+    else
+      request->send(404, "text/plain", "No waterfall file");
+  });
+
+  server.on("/waterfall_decoder.py", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *resp = request->beginResponse(200, "text/x-python", WATERFALL_DECODER_SCRIPT);
+    resp->addHeader("Content-Disposition", "attachment; filename=\"waterfall_decoder.py\"");
+    request->send(resp);
+  });
+
   server.onNotFound([] (AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
   });
@@ -620,12 +636,17 @@ const String webConfigPage()
   String pass3 = prefs.getString("wifipass3", "");
   prefs.end();
 
+  String wfLinks = "<A HREF='/waterfall_decoder.py'>Download waterfall decoder script</A>";
+  if(waterfallFileExists())
+    wfLinks = "<A HREF='/waterfall'>Download waterfall</A>&nbsp;|&nbsp;" + wfLinks;
+
   return webPage(
 "<H1>ATS-Mini Config</H1>"
 "<P ALIGN='CENTER'>"
   "<A HREF='/'>Status</A>"
   "&nbsp;|&nbsp;<A HREF='/memory'>Memory</A>"
 "</P>"
+"<P ALIGN='CENTER' STYLE='margin-bottom:1em'>" + wfLinks + "</P>"
 "<FORM ACTION='/setconfig' METHOD='POST'>"
   "<TABLE COLUMNS=2>"
   "<TR><TH COLSPAN=2 CLASS='HEADING'>WiFi Network 1</TH></TR>"

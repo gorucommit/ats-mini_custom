@@ -14,7 +14,7 @@ void ButtonTracker::reset() {
 
 ButtonTracker::State ButtonTracker::update(bool currentState, unsigned int debounceInterval) {
   unsigned long now = millis();
-  State result = {false, false, false, false};
+  State result = {false, false, false, false, false};
 
   // Debounce logic
   if (currentState != lastState) {
@@ -33,12 +33,12 @@ ButtonTracker::State ButtonTracker::update(bool currentState, unsigned int debou
         pressStartTime = now;
       } else { // Handle release
         unsigned long pressDuration = now - pressStartTime;
-        if (pressDuration < LONG_PRESS_INTERVAL) {
-          if (pressDuration >= SHORT_PRESS_INTERVAL) {
-            result.wasShortPressed = true;
-          } else {
-            result.wasClicked = true;
-          }
+        if (pressDuration >= LONG_PRESS_INTERVAL) {
+          result.wasLongPressed = true;
+        } else if (pressDuration >= SHORT_PRESS_INTERVAL) {
+          result.wasShortPressed = true;
+        } else {
+          result.wasClicked = true;
         }
       }
     }

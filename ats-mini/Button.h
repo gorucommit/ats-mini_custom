@@ -10,8 +10,9 @@ class ButtonTracker {
     struct State {
       bool isPressed;       // Current pressed state (after debounce)
       bool wasClicked;      // Released after <0.5s press
-      bool wasShortPressed; // Released after >0.5s press
-      bool isLongPressed;   // Still pressed after >2s
+      bool wasShortPressed; // Released after 0.5s–2s press
+      bool wasLongPressed;  // Released after ≥2s press
+      bool isLongPressed;   // Still pressed after >2s (used for sleep toggle)
     };
 
   ButtonTracker();

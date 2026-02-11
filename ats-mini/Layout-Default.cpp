@@ -3,6 +3,7 @@
 #include "Utils.h"
 #include "Menu.h"
 #include "Draw.h"
+#include "Waterfall.h"
 
 void drawLayoutDefault(const char *statusLine1, const char *statusLine2)
 {
@@ -42,6 +43,7 @@ void drawLayoutDefault(const char *statusLine1, const char *statusLine2)
     FUNIT_OFFSET_X, FUNIT_OFFSET_Y,
     currentCmd == CMD_FREQ ? getFreqInputPos() + (pushAndRotate ? 0x80 : 0) : 100
   );
+  drawPiggy(PIGGY_OFFSET_X, PIGGY_OFFSET_Y);
 
   // Show station or channel name, if present
   if(*getStationName() == 0xFF)
@@ -59,7 +61,11 @@ void drawLayoutDefault(const char *statusLine1, const char *statusLine2)
   // Indicate FM pilot detection (stereo indicator)
   drawStereoIndicator(METER_OFFSET_X, METER_OFFSET_Y, (currentMode==FM) && rx.getCurrentPilot());
 
-  if(currentCmd == CMD_SCAN)
+  if(currentCmd == CMD_SCAN && waterfallIsRecording())
+  {
+    drawWiFiStatus(statusLine1, statusLine2, STATUS_OFFSET_X, STATUS_OFFSET_Y);
+  }
+  else if(currentCmd == CMD_SCAN)
   {
     drawScanGraphs(isSSB()? (currentFrequency + currentBFO/1000) : currentFrequency);
   }

@@ -31,6 +31,8 @@
 #define WIFI_OFFSET_Y    0    // WiFi y offset
 #define BLE_OFFSET_X   104    // BLE x offset
 #define BLE_OFFSET_Y     0    // BLE y offset
+#define PIGGY_OFFSET_X  287   // Piggy mascot: right side under frequency
+#define PIGGY_OFFSET_Y  91    // Piggy mascot vertical offset
 
 void drawMessage(const char *msg);
 void drawZoomedMenu(const char *text, bool force = false);
@@ -42,6 +44,7 @@ void drawSaveIndicator(int x, int y);
 void drawBleIndicator(int x, int y);
 void drawBandAndMode(const char *band, const char *mode, int x, int y);
 void drawFrequency(uint32_t freq, int x, int y, int ux, int uy, uint8_t hl);
+void drawPiggy(int x, int y);
 void drawLongStationName(const char *name, int x, int y);
 void drawStationName(const char *name, int x, int y);
 void drawSMeter(int strength, int x, int y);

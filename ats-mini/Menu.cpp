@@ -6,6 +6,7 @@
 #include "EIBI.h"
 #include "Ble.h"
 #include "Menu.h"
+#include "Waterfall.h"
 
 //
 // Bands Menu
@@ -541,14 +542,31 @@ static void clickScan(bool shortPress)
 {
   if(shortPress)
   {
-    // Clear stale parameters
-    clearStationInfo();
-    rssi = snr = 0;
-    drawScreen();
-    drawMessage("Scanning...");
-    scanRun(currentFrequency, 10);
+    if(currentCmd == CMD_SCAN && (scanHasData() || waterfallFileExists()))
+    {
+      currentCmd = CMD_NONE;
+      drawScreen();
+    }
+    else
+    {
+      currentCmd = CMD_SCAN;
+      clearStationInfo();
+      rssi = snr = 0;
+      drawScreen();
+      drawMessage("Scanning...");
+      scanRun(currentFrequency, 10);
+    }
   }
-  else currentCmd = CMD_NONE;
+  else
+  {
+    if(waterfallStart())
+    {
+      currentCmd = CMD_SCAN;
+      drawMessage("Waterfall... (press to stop)");
+    }
+    else
+      currentCmd = CMD_NONE;
+  }
 }
 
 static void doTheme(int16_t enc)
@@ -877,10 +895,8 @@ static void clickMenu(int cmd, bool shortPress)
       break;
 
     case MENU_SCAN:
-      // Run a band scan around current frequency with the same
-      // step as scale resolution (10kHz for AM, 100kHz for FM)
-      currentCmd = CMD_SCAN;
-      clickScan(true);
+      // Short press = scan, long press = waterfall (clickScan uses shortPress)
+      clickScan(shortPress);
       break;
   }
 }

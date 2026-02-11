@@ -14,6 +14,7 @@
 #include "EIBI.h"
 #include "Remote.h"
 #include "Ble.h"
+#include "Waterfall.h"
 
 // SI473/5 and UI
 #define MIN_ELAPSED_TIME         5  // 300
@@ -38,6 +39,7 @@ int8_t softMuteMaxAttIdx = 4;
 
 bool seekStop = false;        // G8PTN: Added flag to abort seeking on rotary encoder detection
 bool pushAndRotate = false;   // Push and rotate is active, ignore the long press
+static bool longPressSleepToggled = false;  // Toggle sleep only once per hold
 
 long elapsedRSSI = millis();
 long elapsedButton = millis();
@@ -753,6 +755,9 @@ void loop()
 
   ButtonTracker::State pb1st = pb1.update(digitalRead(ENCODER_PUSH_BUTTON) == LOW);
 
+  if(waterfallIsRecording())
+    waterfallTick();
+
   // Periodically print status to remote interfaces
   serialTickTime(&Serial, &remoteSerialState, usbModeIdx);
   remoteBLETickTime(&BLESerial, &remoteBLEState, bleModeIdx);
@@ -851,22 +856,28 @@ void loop()
       // Reset timeouts
       elapsedSleep = elapsedCommand = currentTime;
     }
-    else if(pb1st.isLongPressed)
+    else if(pb1st.isLongPressed && currentCmd == CMD_NONE)
     {
-      // Encoder is being LONG PRESSED: TOGGLE DISPLAY
-      sleepOn(!sleepOn());
-      // CPU sleep can take long time, renew the timestamps
+      if(!longPressSleepToggled)
+      {
+        longPressSleepToggled = true;
+        sleepOn(!sleepOn());
+      }
       elapsedSleep = elapsedCommand = currentTime = millis();
-
     }
-    else if(pb1st.wasClicked || pb1st.wasShortPressed)
+    else if(pb1st.wasClicked || pb1st.wasShortPressed || pb1st.wasLongPressed)
     {
       // Encoder click or short press
       // Reset timeouts
       elapsedSleep = elapsedCommand = currentTime;
 
+      if(waterfallIsRecording())
+      {
+        waterfallRequestStop();
+        needRedraw = true;
+      }
       // If in locked/unlocked sleep mode
-      if(sleepOn())
+      else if(sleepOn())
       {
         // If sleep timeout is enabled, exit it via button press of any duration
         // (users don't need to figure out that a long press is required to wake up the device)
@@ -878,15 +889,15 @@ void loop()
         else if(sleepModeIdx == SLEEP_UNLOCKED)
         {
           // Allow to adjust the volume in sleep mode
-          if(pb1st.wasShortPressed && currentCmd==CMD_NONE)
+          if((pb1st.wasShortPressed || pb1st.wasLongPressed) && currentCmd==CMD_NONE)
             currentCmd = CMD_VOLUME;
           else if(currentCmd==CMD_VOLUME)
-            clickHandler(currentCmd, pb1st.wasShortPressed);
+            clickHandler(currentCmd, !pb1st.wasLongPressed);
 
           needRedraw = true;
         }
       }
-      else if(clickHandler(currentCmd, pb1st.wasShortPressed))
+      else if(clickHandler(currentCmd, !pb1st.wasLongPressed))
       {
         // Command handled, redraw screen
         needRedraw = true;
@@ -900,7 +911,7 @@ void loop()
         currentCmd = CMD_NONE;
         needRedraw = true;
       }
-      else if(pb1st.wasShortPressed)
+      else if(pb1st.wasShortPressed || pb1st.wasLongPressed)
       {
         // Volume shortcut (only active in VFO mode)
         currentCmd = CMD_VOLUME;
@@ -921,6 +932,8 @@ void loop()
     pushAndRotate = false;
     needRedraw = true;
   }
+  if(!pb1st.isPressed)
+    longPressSleepToggled = false;
 
   // Disable commands control
   if((currentTime - elapsedCommand) > ELAPSED_COMMAND)
@@ -943,24 +956,28 @@ void loop()
     elapsedSleep = elapsedCommand = currentTime = millis();
   }
 
-  if((currentTime - elapsedRSSI) > MIN_ELAPSED_RSSI_TIME)
+  // Skip radio polling while waterfall is recording (radio is on different freq)
+  if(!waterfallIsRecording())
   {
-    needRedraw |= processRssiSnr();
-    elapsedRSSI = currentTime;
-  }
+    if((currentTime - elapsedRSSI) > MIN_ELAPSED_RSSI_TIME)
+    {
+      needRedraw |= processRssiSnr();
+      elapsedRSSI = currentTime;
+    }
 
-  // Periodically check received RDS information
-  if((currentTime - lastRDSCheck) > RDS_CHECK_TIME)
-  {
-    needRedraw |= (currentMode == FM) && (snr >= 12) && checkRds();
-    lastRDSCheck = currentTime;
-  }
+    // Periodically check received RDS information
+    if((currentTime - lastRDSCheck) > RDS_CHECK_TIME)
+    {
+      needRedraw |= (currentMode == FM) && (snr >= 12) && checkRds();
+      lastRDSCheck = currentTime;
+    }
 
-  // Periodically check schedule
-  if((currentTime - lastScheduleCheck) > SCHEDULE_CHECK_TIME)
-  {
-    needRedraw |= identifyFrequency(currentFrequency + currentBFO / 1000, true);
-    lastScheduleCheck = currentTime;
+    // Periodically check schedule
+    if((currentTime - lastScheduleCheck) > SCHEDULE_CHECK_TIME)
+    {
+      needRedraw |= identifyFrequency(currentFrequency + currentBFO / 1000, true);
+      lastScheduleCheck = currentTime;
+    }
   }
 
   // Periodically synchronize time via NTP
@@ -990,7 +1007,13 @@ void loop()
   }
 
   // Redraw screen if necessary
-  if(needRedraw) drawScreen();
+  if(needRedraw)
+  {
+    if(waterfallIsRecording())
+      drawScreen("Waterfall... (press to stop)", nullptr);
+    else
+      drawScreen();
+  }
 
   // Add a small default delay in the main loop
   delay(5);
