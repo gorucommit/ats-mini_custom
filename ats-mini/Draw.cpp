@@ -509,7 +509,9 @@ void drawScaleWithSignals(uint32_t freq)
     }
   }
 
-  drawBandMapLine(freq);
+  // Only show band-map line for AM/SSB bands (not FM)
+  if(currentMode != FM)
+    drawBandMapLine(freq);
 }
 
 //
