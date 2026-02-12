@@ -5,6 +5,7 @@
 #include "Menu.h"
 #include "Ble.h"
 #include "Draw.h"
+#include "Waterfall.h"
 #include "piggy.h"
 
 #include <pgmspace.h>
@@ -550,6 +551,91 @@ void drawScaleWithSignals(uint32_t freq)
   // Only show band-map line for AM/SSB bands (not FM)
   if(currentMode != FM)
     drawBandMapLine(freq);
+}
+
+//
+// Draw common top section shared by all layouts:
+// status icons, band/mode, theme editor label, frequency, piggy, station name
+//
+void drawLayoutTop(void)
+{
+  // Draw preferences write request icon
+  drawSaveIndicator(SAVE_OFFSET_X, SAVE_OFFSET_Y);
+
+  // Draw BLE icon
+  drawBleIndicator(BLE_OFFSET_X, BLE_OFFSET_Y);
+
+  // Draw battery indicator & voltage
+  bool has_voltage = drawBattery(BATT_OFFSET_X, BATT_OFFSET_Y);
+
+  // Draw WiFi icon
+  drawWiFiIndicator(has_voltage ? WIFI_OFFSET_X : BATT_OFFSET_X - 13, WIFI_OFFSET_Y);
+
+  // Set font we are going to use
+  spr.setFreeFont(&Orbitron_Light_24);
+
+  // Draw band and mode
+  drawBandAndMode(
+    getCurrentBand()->bandName,
+    bandModeDesc[currentMode],
+    BAND_OFFSET_X, BAND_OFFSET_Y
+  );
+
+  if(switchThemeEditor())
+  {
+    spr.setTextDatum(TR_DATUM);
+    spr.setTextColor(TH.text_warn);
+    spr.drawString(TH.name, 319, BATT_OFFSET_Y + 17, 2);
+  }
+
+  // Draw frequency, units, and optionally highlight a digit
+  drawFrequency(
+    currentFrequency,
+    FREQ_OFFSET_X, FREQ_OFFSET_Y,
+    FUNIT_OFFSET_X, FUNIT_OFFSET_Y,
+    currentCmd == CMD_FREQ ? getFreqInputPos() + (pushAndRotate ? 0x80 : 0) : 100
+  );
+  drawPiggy(PIGGY_OFFSET_X, PIGGY_OFFSET_Y);
+
+  // Show station or channel name, if present
+  if(*getStationName() == 0xFF)
+    drawLongStationName(getStationName() + 1, MENU_OFFSET_X + 1 + 76 + MENU_DELTA_X + 2, RDS_OFFSET_Y);
+  else if(*getStationName())
+    drawStationName(getStationName(), RDS_OFFSET_X, RDS_OFFSET_Y);
+}
+
+//
+// Draw common bottom section shared by all layouts:
+// waterfall status, scan graphs, WiFi status, or radio text.
+// Returns true if the content area was consumed (layout should NOT draw its own content).
+// Returns false if the layout should draw its own content in the bottom area.
+//
+bool drawLayoutBottom(const char *statusLine1, const char *statusLine2)
+{
+  uint32_t freq = isSSB() ? (currentFrequency + currentBFO/1000) : currentFrequency;
+
+  if(currentCmd == CMD_SCAN && waterfallIsRecording())
+  {
+    drawWiFiStatus(statusLine1, statusLine2, STATUS_OFFSET_X, STATUS_OFFSET_Y);
+    return true;
+  }
+
+  if(currentCmd == CMD_SCAN)
+  {
+    drawScanGraphs(freq);
+    return true;
+  }
+
+  if(drawWiFiStatus(statusLine1, statusLine2, STATUS_OFFSET_X, STATUS_OFFSET_Y))
+    return true;
+
+  if(*getRadioText() || *getProgramInfo())
+  {
+    drawRadioText(STATUS_OFFSET_Y, STATUS_OFFSET_Y + 25);
+    return true;
+  }
+
+  return false;
 }
 
 //

@@ -430,8 +430,8 @@ void useBand(const Band *band)
   doAgc(0);
   // Set currentAVC values based on mode (AM, SSB)
   doAvc(0);
-  // Wait a bit for things to calm down
-  delay(100);
+  // Brief settling time after radio configuration
+  delay(50);
   // Clear signal strength readings
   rssi = 0;
   snr  = 0;
@@ -1026,6 +1026,6 @@ void loop()
       drawScreen();
   }
 
-  // Add a small default delay in the main loop
-  delay(5);
+  // Yield to other tasks (WiFi, BLE, etc.)
+  delay(2);
 }

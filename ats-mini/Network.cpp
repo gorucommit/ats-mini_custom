@@ -146,13 +146,13 @@ void netInit(uint8_t netMode, bool showStatus)
       // Start WiFi access point if requested
       WiFi.mode(WIFI_AP);
       // Let user see connection status if successful
-      if(wifiInitAP() && showStatus) delay(2000);
+      if(wifiInitAP() && showStatus) delay(1000);
       break;
     case NET_AP_CONNECT:
       // Start WiFi access point if requested
       WiFi.mode(WIFI_AP_STA);
       // Let user see connection status if successful
-      if(wifiInitAP() && showStatus) delay(2000);
+      if(wifiInitAP() && showStatus) delay(1000);
       break;
     default:
       // No access point
@@ -164,7 +164,7 @@ void netInit(uint8_t netMode, bool showStatus)
   if(netMode>NET_AP_ONLY && wifiConnect())
   {
     // Let user see connection status if successful
-    if(netMode!=NET_SYNC && showStatus) delay(2000);
+    if(netMode!=NET_SYNC && showStatus) delay(1000);
 
     // NTP time updates will happen every 5 minutes
     ntpClient.setUpdateInterval(5*60*1000);

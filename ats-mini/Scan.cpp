@@ -45,8 +45,12 @@ float scanGetRSSI(uint16_t freq)
   if((scanStatus!=SCAN_DONE) || (freq<scanStartFreq) || (freq>=scanStartFreq+scanStep*scanCount))
     return(0.0);
 
-  uint8_t result = scanData[(freq - scanStartFreq) / scanStep].rssi;
-  return((result - scanMinRSSI) / (float)(scanMaxRSSI - scanMinRSSI + 1));
+  // Guard against flat signal (all values identical)
+  if(scanMaxRSSI <= scanMinRSSI) return(0.0);
+
+  float val = (float)(scanData[(freq - scanStartFreq) / scanStep].rssi - scanMinRSSI)
+            / (float)(scanMaxRSSI - scanMinRSSI);
+  return(val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val));
 }
 
 float scanGetSNR(uint16_t freq)
@@ -55,8 +59,12 @@ float scanGetSNR(uint16_t freq)
   if((scanStatus!=SCAN_DONE) || (freq<scanStartFreq) || (freq>=scanStartFreq+scanStep*scanCount))
     return(0.0);
 
-  uint8_t result = scanData[(freq - scanStartFreq) / scanStep].snr;
-  return((result - scanMinSNR) / (float)(scanMaxSNR - scanMinSNR + 1));
+  // Guard against flat signal (all values identical)
+  if(scanMaxSNR <= scanMinSNR) return(0.0);
+
+  float val = (float)(scanData[(freq - scanStartFreq) / scanStep].snr - scanMinSNR)
+            / (float)(scanMaxSNR - scanMinSNR);
+  return(val < 0.0f ? 0.0f : (val > 1.0f ? 1.0f : val));
 }
 
 static void scanInit(uint16_t centerFreq, uint16_t step)
