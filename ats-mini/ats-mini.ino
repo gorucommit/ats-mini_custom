@@ -903,12 +903,12 @@ void loop()
           if((pb1st.wasShortPressed || pb1st.wasLongPressed) && currentCmd==CMD_NONE)
             currentCmd = CMD_VOLUME;
           else if(currentCmd==CMD_VOLUME)
-            clickHandler(currentCmd, !pb1st.wasLongPressed);
+            clickHandler(currentCmd, pb1st.wasShortPressed);
 
           needRedraw = true;
         }
       }
-      else if(clickHandler(currentCmd, !pb1st.wasLongPressed))
+      else if(clickHandler(currentCmd, pb1st.wasShortPressed))
       {
         // Command handled, redraw screen
         needRedraw = true;
