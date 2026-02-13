@@ -105,7 +105,7 @@ uint8_t seekMode(bool toggle = false);
 void drawSideBar(uint16_t cmd, int x, int y, int sx);
 bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca);
 void doSelectDigit(int16_t enc);
-bool clickHandler(uint16_t cmd, bool shortPress);
+bool clickHandler(uint16_t cmd, bool shortPress, bool longPress = false);
 void selectBand(uint8_t idx, bool drawLoadingSSB = true);
 int getTotalBands();
 int getTotalModes();

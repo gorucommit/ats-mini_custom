@@ -538,34 +538,32 @@ static void clickSeek(bool shortPress)
   if(shortPress) seekMode(true); else currentCmd = CMD_NONE;
 }
 
-static void clickScan(bool shortPress)
+static void clickScan(bool longPress)
 {
-  if(shortPress)
+  if(longPress)
   {
-    if(currentCmd == CMD_SCAN && (scanHasData() || waterfallFileExists()))
-    {
-      currentCmd = CMD_NONE;
-      drawScreen();
-    }
-    else
-    {
-      currentCmd = CMD_SCAN;
-      clearStationInfo();
-      rssi = snr = 0;
-      drawScreen();
-      drawMessage("Scanning...");
-      scanRun(currentFrequency, 10);
-    }
-  }
-  else
-  {
+    // Long press = start waterfall recording
     if(waterfallStart())
     {
       currentCmd = CMD_SCAN;
       drawMessage("Waterfall... (press to stop)");
     }
-    else
-      currentCmd = CMD_NONE;
+  }
+  else if(currentCmd == CMD_SCAN && (scanHasData() || waterfallFileExists()))
+  {
+    // Click/short press while scan data is shown = exit
+    currentCmd = CMD_NONE;
+    drawScreen();
+  }
+  else
+  {
+    // Click/short press = run a normal scan
+    currentCmd = CMD_SCAN;
+    clearStationInfo();
+    rssi = snr = 0;
+    drawScreen();
+    drawMessage("Scanning...");
+    scanRun(currentFrequency, 10);
   }
 }
 
@@ -859,7 +857,7 @@ static void doMenu(int16_t enc)
   menuIdx = wrap_range(menuIdx, enc, 0, LAST_ITEM(menu));
 }
 
-static void clickMenu(int cmd, bool shortPress)
+static void clickMenu(int cmd, bool shortPress, bool longPress)
 {
   // No command yet
   currentCmd = CMD_NONE;
@@ -895,8 +893,8 @@ static void clickMenu(int cmd, bool shortPress)
       break;
 
     case MENU_SCAN:
-      // Short press = scan, long press = waterfall (clickScan uses shortPress)
-      clickScan(shortPress);
+      // Click/short press = scan, long press = waterfall
+      clickScan(longPress);
       break;
   }
 }
@@ -982,18 +980,18 @@ bool doSideBar(uint16_t cmd, int16_t enc, int16_t enca)
   return(true);
 }
 
-bool clickHandler(uint16_t cmd, bool shortPress)
+bool clickHandler(uint16_t cmd, bool shortPress, bool longPress)
 {
   switch(cmd)
   {
-    case CMD_MENU:     clickMenu(menuIdx, shortPress);break;
+    case CMD_MENU:     clickMenu(menuIdx, shortPress, longPress);break;
     case CMD_SETTINGS: clickSettings(settingsIdx, shortPress);break;
     case CMD_MEMORY:   clickMemory(memoryIdx, shortPress);break;
     case CMD_WIFIMODE: clickWiFiMode(wifiModeIdx, shortPress);break;
     case CMD_VOLUME:   clickVolume(shortPress);break;
     case CMD_SQUELCH:  clickSquelch(shortPress);break;
     case CMD_SEEK:     clickSeek(shortPress);break;
-    case CMD_SCAN:     clickScan(shortPress);break;
+    case CMD_SCAN:     clickScan(longPress);break;
     case CMD_FREQ:     return(clickFreq(shortPress));
     default:           return(false);
   }
