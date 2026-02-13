@@ -167,10 +167,11 @@ void setup()
 
   // Show splash screen immediately so user sees something right away
   spr.fillSprite(TH.bg);
+  drawPiggy(150, 40);
   spr.setTextColor(TH.text);
-  spr.drawString(RECEIVER_NAME, 160, 70);
+  spr.drawString(RECEIVER_NAME, 160, 75);
   spr.setTextColor(TH.text_muted);
-  spr.drawString("Starting...", 160, 105, 2);
+  spr.drawString("Starting...", 160, 110, 2);
   spr.pushSprite(0, 0);
   ledcWrite(PIN_LCD_BL, 130);  // Turn backlight on early
 
