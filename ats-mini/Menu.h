@@ -116,6 +116,8 @@ int getFreqInputStep();
 const Step *getCurrentStep();
 const Bandwidth *getCurrentBandwidth();
 uint8_t getRDSMode();
+uint8_t getRDSModeIdx();
+void setRDSModeIdx(uint8_t idx);
 
 int getCurrentUTCOffset();
 int getTotalUTCOffsets();

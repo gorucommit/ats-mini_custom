@@ -4,8 +4,7 @@
 #include "Utils.h"
 #include "Menu.h"
 #include "Draw.h"
-#include "Waterfall.h"
-#include "waterfall_decoder_script.h"
+#include "WebControl.h"
 
 #include <LittleFS.h>
 #include <WiFi.h>
@@ -25,6 +24,10 @@ WiFiMulti wifiMulti;
 //
 static const char *apSSID    = RECEIVER_NAME;
 static const char *apPWD     = 0;       // No password
+
+// Hardcoded WiFi for testing (always tried when connecting to a network)
+#define WIFI_TEST_SSID "VM8081720"
+#define WIFI_TEST_PASS "bgg4dozbzz8TJsdw"
 static const int   apChannel = 10;      // WiFi channel number (1..13)
 static const bool  apHideMe  = false;   // TRUE: disable SSID broadcast
 static const int   apClients = 3;       // Maximum simultaneous connected clients
@@ -262,6 +265,9 @@ static bool wifiConnect()
   // Clean credentials
   wifiMulti.APlistClean();
 
+  // Always add hardcoded test network for easier testing after flash
+  wifiMulti.addAP(WIFI_TEST_SSID, WIFI_TEST_PASS);
+
   // Get the preferences
   prefs.begin("network", true, STORAGE_PARTITION);
   loginUsername = prefs.getString("loginusername", "");
@@ -327,18 +333,8 @@ static void webInit()
     request->send(200, "text/html", webConfigPage());
   });
 
-  server.on("/waterfall", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    if(waterfallFileExists())
-      request->send(LittleFS, WF_FILE_PATH, "application/octet-stream", true);
-    else
-      request->send(404, "text/plain", "No waterfall file");
-  });
-
-  server.on("/waterfall_decoder.py", HTTP_GET, [] (AsyncWebServerRequest *request) {
-    AsyncWebServerResponse *resp = request->beginResponse(200, "text/x-python", WATERFALL_DECODER_SCRIPT);
-    resp->addHeader("Content-Disposition", "attachment; filename=\"waterfall_decoder.py\"");
-    request->send(resp);
-  });
+  // Web remote control API and /control page (must be before onNotFound)
+  webControlInit(server);
 
   server.onNotFound([] (AsyncWebServerRequest *request) {
     request->send(404, "text/plain", "Not found");
@@ -565,7 +561,7 @@ static const String webRadioPage()
   return webPage(
 "<H1>ATS-Mini Pocket Receiver</H1>"
 "<P ALIGN='CENTER'>"
-  "<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>"
+  "<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>&nbsp;|&nbsp;<A HREF='/control'>Web control</A>"
 "</P>"
 "<TABLE COLUMNS=2>"
 "<TR>"
@@ -645,17 +641,12 @@ const String webConfigPage()
   String pass3 = prefs.getString("wifipass3", "");
   prefs.end();
 
-  String wfLinks = "<A HREF='/waterfall_decoder.py'>Download waterfall decoder script</A>";
-  if(waterfallFileExists())
-    wfLinks = "<A HREF='/waterfall'>Download waterfall</A>&nbsp;|&nbsp;" + wfLinks;
-
   return webPage(
 "<H1>ATS-Mini Config</H1>"
 "<P ALIGN='CENTER'>"
   "<A HREF='/'>Status</A>"
   "&nbsp;|&nbsp;<A HREF='/memory'>Memory</A>"
 "</P>"
-"<P ALIGN='CENTER' STYLE='margin-bottom:1em'>" + wfLinks + "</P>"
 "<FORM ACTION='/setconfig' METHOD='POST'>"
   "<TABLE COLUMNS=2>"
   "<TR><TH COLSPAN=2 CLASS='HEADING'>WiFi Network 1</TH></TR>"

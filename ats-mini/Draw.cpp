@@ -5,7 +5,6 @@
 #include "Menu.h"
 #include "Ble.h"
 #include "Draw.h"
-#include "Waterfall.h"
 #include "piggy.h"
 
 #include <pgmspace.h>
@@ -451,7 +450,7 @@ void drawScanGraphs(uint32_t freq)
 //
 struct BandMapEdge { uint32_t lo; uint32_t hi; };
 
-static int getBandMapType(uint32_t freqKhz)
+int getBandMapType(uint32_t freqKhz)
 {
   static const BandMapEdge broadcast[] = {
     {  520,  1602 }, { 2300,  2500 }, { 3200,  3400 }, { 3900,  4000 },
@@ -606,19 +605,13 @@ void drawLayoutTop(void)
 
 //
 // Draw common bottom section shared by all layouts:
-// waterfall status, scan graphs, WiFi status, or radio text.
+// scan graphs, WiFi status, or radio text.
 // Returns true if the content area was consumed (layout should NOT draw its own content).
 // Returns false if the layout should draw its own content in the bottom area.
 //
 bool drawLayoutBottom(const char *statusLine1, const char *statusLine2)
 {
   uint32_t freq = isSSB() ? (currentFrequency + currentBFO/1000) : currentFrequency;
-
-  if(currentCmd == CMD_SCAN && waterfallIsRecording())
-  {
-    drawWiFiStatus(statusLine1, statusLine2, STATUS_OFFSET_X, STATUS_OFFSET_Y);
-    return true;
-  }
 
   if(currentCmd == CMD_SCAN)
   {

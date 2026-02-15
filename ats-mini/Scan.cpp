@@ -146,6 +146,33 @@ static bool scanTickTime()
   return(scanStatus==SCAN_RUN);
 }
 
+uint16_t scanGetStartFreq(void)
+{
+  return scanStartFreq;
+}
+
+uint16_t scanGetStep(void)
+{
+  return scanStep;
+}
+
+uint16_t scanGetCount(void)
+{
+  return (scanStatus == SCAN_DONE) ? scanCount : 0;
+}
+
+uint8_t scanGetPointRSSI(uint16_t i)
+{
+  if(i >= scanCount) return 0;
+  return scanData[i].rssi;
+}
+
+uint8_t scanGetPointSNR(uint16_t i)
+{
+  if(i >= scanCount) return 0;
+  return scanData[i].snr;
+}
+
 //
 // Run entire scan once
 //

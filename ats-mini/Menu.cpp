@@ -6,7 +6,7 @@
 #include "EIBI.h"
 #include "Ble.h"
 #include "Menu.h"
-#include "Waterfall.h"
+#include "WebControl.h"
 
 //
 // Bands Menu
@@ -199,6 +199,8 @@ static const RDSMode rdsMode[] =
 };
 
 uint8_t getRDSMode() { return(rdsMode[rdsModeIdx].mode); }
+uint8_t getRDSModeIdx() { return rdsModeIdx; }
+void setRDSModeIdx(uint8_t idx) { if(idx < ITEM_COUNT(rdsMode)) rdsModeIdx = idx; }
 
 //
 // Sleep Mode Menu
@@ -521,6 +523,7 @@ void doVolume(int16_t enc)
 {
   volume = clamp_range(volume, enc, 0, 63);
   if(!muteOn(MUTE_MAIN)) rx.setVolume(volume);
+  webControlNotify();
 }
 
 static void clickVolume(bool shortPress)
@@ -538,18 +541,11 @@ static void clickSeek(bool shortPress)
   if(shortPress) seekMode(true); else currentCmd = CMD_NONE;
 }
 
+// longPress parameter kept for API consistency (was used for waterfall; now unused)
 static void clickScan(bool longPress)
 {
-  if(longPress)
-  {
-    // Long press = start waterfall recording
-    if(waterfallStart())
-    {
-      currentCmd = CMD_SCAN;
-      drawMessage("Waterfall... (press to stop)");
-    }
-  }
-  else if(currentCmd == CMD_SCAN && (scanHasData() || waterfallFileExists()))
+  (void)longPress;
+  if(currentCmd == CMD_SCAN && scanHasData())
   {
     // Click/short press while scan data is shown = exit
     currentCmd = CMD_NONE;
@@ -593,6 +589,7 @@ void doAvc(int16_t enc)
     AmAvcIdx = newAvcIdx;
   }
   rx.setAvcAmMaxGain(newAvcIdx);
+  webControlNotify();
 }
 
 void doFmRegion(int16_t enc)
@@ -761,6 +758,7 @@ void doStep(int16_t enc)
     rx.setSeekFmSpacing(steps[currentMode][idx].spacing);
   else
     rx.setSeekAmSpacing(steps[currentMode][idx].spacing);
+  webControlNotify();
 }
 
 void doAgc(int16_t enc)
@@ -783,6 +781,7 @@ void doAgc(int16_t enc)
 
   // Configure SI4732/5 (if agcNdx = 0, no attenuation)
   rx.setAutomaticGainControl(disableAgc, agcNdx);
+  webControlNotify();
 }
 
 void doMode(int16_t enc)
@@ -806,11 +805,13 @@ void doMode(int16_t enc)
 
   // Enable the new band
   selectBand(bandIdx);
+  webControlNotify();
 }
 
 void doSquelch(int16_t enc)
 {
   currentSquelch = clamp_range(currentSquelch, enc, 0, 127);
+  webControlNotify();
 }
 
 void doSoftMute(int16_t enc)
@@ -837,6 +838,7 @@ void doBand(int16_t enc)
 
   // Enable the new band
   selectBand(bandIdx);
+  webControlNotify();
 }
 
 void doBandwidth(int16_t enc)
@@ -846,6 +848,7 @@ void doBandwidth(int16_t enc)
   idx = wrap_range(idx, enc, 0, getLastBandwidth(currentMode));
   bands[bandIdx].bandwidthIdx = idx;
   setBandwidth();
+  webControlNotify();
 }
 
 //
@@ -893,7 +896,6 @@ static void clickMenu(int cmd, bool shortPress, bool longPress)
       break;
 
     case MENU_SCAN:
-      // Click/short press = scan, long press = waterfall
       clickScan(longPress);
       break;
   }

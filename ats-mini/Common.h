@@ -189,6 +189,11 @@ void scanRun(uint16_t centerFreq, uint16_t step);
 bool scanHasData(void);
 float scanGetRSSI(uint16_t freq);
 float scanGetSNR(uint16_t freq);
+uint16_t scanGetStartFreq(void);
+uint16_t scanGetStep(void);
+uint16_t scanGetCount(void);
+uint8_t scanGetPointRSSI(uint16_t i);
+uint8_t scanGetPointSNR(uint16_t i);
 
 // Station.c
 const char *getStationName();

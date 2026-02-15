@@ -2,7 +2,7 @@
 
 ![](docs/source/_static/esp32-si4732-ui-theme.jpg)
 
-Custom firmware fork for the SI4732 (ESP32-S3) Mini/Pocket Receiver, adding new UI layouts, a piggy mascot, waterfall spectrum recording, and performance improvements on top of the [upstream ATS-Mini firmware](https://github.com/esp32-si4732/ats-mini).
+Custom firmware fork for the SI4732 (ESP32-S3) Mini/Pocket Receiver, adding new UI layouts, a piggy mascot, performance improvements, and **Web control** on top of the [upstream ATS-Mini firmware](https://github.com/esp32-si4732/ats-mini).
 
 ## Branches
 
@@ -13,18 +13,17 @@ Tracks upstream with the following additions:
 - **Signal Scale layout** — A third UI layout option (alongside Default and S-Meter) that replaces the bottom frequency scale with signal strength markers from scan data. Uses both SNR and RSSI-above-baseline for more accurate signal representation. Broadcast bands are marked in red, amateur bands in blue.
 - **Piggy mascot** — A tiny piggy bitmap drawn on-screen next to the frequency display (loaded from PROGMEM, cached to RAM).
 
-### `waterfall-experiment` — Experimental features + fixes
+### `web-control` — Web control + performance improvements
 
 Includes everything from `main`, plus:
 
-- **Waterfall spectrum recording** — Long-press SCAN to start a 10-minute muted recording that sweeps the current band, sampling RSSI at each frequency step. The raw data is saved to LittleFS as a `.raw` file (with frequency metadata in the header). Both the `.raw` file and a Python decoder script are downloadable from the ATS-Mini config portal (`/waterfall` and `/waterfall_decoder.py`). The decoder script generates a color-mapped PNG image with a frequency axis.
+- **Web control** — Remote control UI at **http://atsmini.local/control** (or device IP). Full band/frequency/mode control, VU-style meters, scan spectrum display, faders for volume/squelch/AGC/AVC, band selector, and RDS display. Uses Server-Sent Events for live status and a command queue so radio changes run on the main loop. See `docs/WEB_CONTROL_REFERENCE.md` for API and integration details.
 - **Startup time improvements** — SI4732 power-on is parallelized with display initialization; splash screen and backlight appear immediately; WiFi/BLE connection is deferred to run in the background instead of blocking `setup()`.
-- **Dynamic waterfall buffer** — The 80KB recording buffer is `malloc`'d only during recording and freed afterwards, reducing idle RAM usage from ~43% to ~18%.
 - **Timer overflow safety** — All `millis()`-based timer variables changed from `long` to `uint32_t`.
 - **Scan RSSI/SNR fix** — Removed off-by-one error in `scanGetRSSI`/`scanGetSNR` that prevented the strongest signal from reaching full scale; added bounds clamping to `[0.0, 1.0]` and flat-signal divide-by-zero guard.
-- **Layout code deduplication** — Extracted `drawLayoutTop()` and `drawLayoutBottom()` shared helpers, eliminating ~120 lines of repeated code across the three layout files.
-- **Delay reduction** — `useBand()` settling delay reduced from 100ms to 50ms; main loop yield from 5ms to 2ms; WiFi status display delays from 2s to 1s.
-- **Button fix** — Restored correct three-way button semantics (click/short-press/long-press) that were broken during the waterfall button integration, fixing click-to-exit for volume, squelch, and other modal commands.
+- **Layout code deduplication** — Extracted `drawLayoutTop()` and `drawLayoutBottom()` shared helpers, eliminating repeated code across the three layout files.
+- **Delay reduction** — `useBand()` settling delay reduced from 100 ms to 50 ms; main loop yield from 5 ms to 2 ms; WiFi status display delays from 2 s to 1 s.
+- **Button semantics** — Three-way button behaviour (click / short-press / long-press) with correct handling for volume, squelch, and other modal commands; long-press in VFO mode toggles display sleep (once per hold).
 
 ## Building
 
@@ -32,6 +31,14 @@ Requires [arduino-cli](https://arduino.github.io/arduino-cli/) with ESP32-S3 boa
 
 ```bash
 make
+```
+
+To embed the Web control page (and optional mascot image) into the firmware:
+
+```bash
+python3 tools/embed_html.py docs/source/control.html ats-mini/control_html.h
+# Optional: add mascot image (resized if >3.5 KB to stay under 16 KB gzip)
+python3 tools/embed_html.py docs/source/control.html ats-mini/control_html.h --embed-image steampigg.png
 ```
 
 ## Upstream
@@ -47,7 +54,8 @@ Based on the following sources:
 
 ## Documentation
 
-The upstream hardware, software and flashing documentation is available at <https://esp32-si4732.github.io/ats-mini/>
+- **Web control (this fork):** `docs/WEB_CONTROL_REFERENCE.md`
+- **Upstream hardware, software and flashing:** <https://esp32-si4732.github.io/ats-mini/>
 
 ## Discuss
 

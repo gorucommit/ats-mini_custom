@@ -14,11 +14,11 @@
 #include "EIBI.h"
 #include "Remote.h"
 #include "Ble.h"
-#include "Waterfall.h"
+#include "WebControl.h"
 
 // SI473/5 and UI
 #define MIN_ELAPSED_TIME         5  // 300
-#define MIN_ELAPSED_RSSI_TIME  200  // RSSI check uses IN_ELAPSED_RSSI_TIME * 6 = 1.2s
+#define MIN_ELAPSED_RSSI_TIME   80  // RSSI/SNR poll interval (ms) for faster web UI
 #define ELAPSED_COMMAND      10000  // time to turn off the last command controlled by encoder. Time to goes back to the VFO control // G8PTN: Increased time and corrected comment
 #define DEFAULT_VOLUME          35  // change it for your favorite sound volume
 #define DEFAULT_SLEEP            0  // Default sleep interval, range = 0 (off) to 255 in steps of 5
@@ -764,9 +764,6 @@ void loop()
 
   ButtonTracker::State pb1st = pb1.update(digitalRead(ENCODER_PUSH_BUTTON) == LOW);
 
-  if(waterfallIsRecording())
-    waterfallTick();
-
   // Periodically print status to remote interfaces
   serialTickTime(&Serial, &remoteSerialState, usbModeIdx);
   remoteBLETickTime(&BLESerial, &remoteBLEState, bleModeIdx);
@@ -835,13 +832,9 @@ void loop()
       {
         case CMD_NONE:
         case CMD_SCAN:
-          // Skip tuning while waterfall is recording (radio is on different freq)
-          if(!waterfallIsRecording())
-          {
-            needRedraw |= doTune(encCountAccel);
-            // Current frequency may have changed
-            prefsRequestSave(SAVE_CUR_BAND);
-          }
+          needRedraw |= doTune(encCountAccel);
+          // Current frequency may have changed
+          prefsRequestSave(SAVE_CUR_BAND);
           break;
         case CMD_FREQ:
           // Digit tuning
@@ -883,13 +876,8 @@ void loop()
       // Reset timeouts
       elapsedSleep = elapsedCommand = currentTime;
 
-      if(waterfallIsRecording())
-      {
-        waterfallRequestStop();
-        needRedraw = true;
-      }
       // If in locked/unlocked sleep mode
-      else if(sleepOn())
+      if(sleepOn())
       {
         // If sleep timeout is enabled, exit it via button press of any duration
         // (users don't need to figure out that a long press is required to wake up the device)
@@ -968,29 +956,27 @@ void loop()
     elapsedSleep = elapsedCommand = currentTime = millis();
   }
 
-  // Skip radio polling while waterfall is recording (radio is on different freq)
-  if(!waterfallIsRecording())
+  if((currentTime - elapsedRSSI) > MIN_ELAPSED_RSSI_TIME)
   {
-    if((currentTime - elapsedRSSI) > MIN_ELAPSED_RSSI_TIME)
-    {
-      needRedraw |= processRssiSnr();
-      elapsedRSSI = currentTime;
-    }
-
-    // Periodically check received RDS information
-    if((currentTime - lastRDSCheck) > RDS_CHECK_TIME)
-    {
-      needRedraw |= (currentMode == FM) && (snr >= 12) && checkRds();
-      lastRDSCheck = currentTime;
-    }
-
-    // Periodically check schedule
-    if((currentTime - lastScheduleCheck) > SCHEDULE_CHECK_TIME)
-    {
-      needRedraw |= identifyFrequency(currentFrequency + currentBFO / 1000, true);
-      lastScheduleCheck = currentTime;
-    }
+    needRedraw |= processRssiSnr();
+    elapsedRSSI = currentTime;
   }
+
+  // Periodically check received RDS information
+  if((currentTime - lastRDSCheck) > RDS_CHECK_TIME)
+  {
+    needRedraw |= (currentMode == FM) && (snr >= 12) && checkRds();
+    lastRDSCheck = currentTime;
+  }
+
+  // Periodically check schedule
+  if((currentTime - lastScheduleCheck) > SCHEDULE_CHECK_TIME)
+  {
+    needRedraw |= identifyFrequency(currentFrequency + currentBFO / 1000, true);
+    lastScheduleCheck = currentTime;
+  }
+
+  webControlTick();
 
   // Periodically synchronize time via NTP
   if((currentTime - lastNTPCheck) > NTP_CHECK_TIME)
@@ -1020,12 +1006,7 @@ void loop()
 
   // Redraw screen if necessary
   if(needRedraw)
-  {
-    if(waterfallIsRecording())
-      drawScreen("Waterfall... (press to stop)", nullptr);
-    else
-      drawScreen();
-  }
+    drawScreen();
 
   // Yield to other tasks (WiFi, BLE, etc.)
   delay(2);

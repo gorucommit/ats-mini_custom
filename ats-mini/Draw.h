@@ -53,6 +53,7 @@ bool drawWiFiStatus(const char *statusLine1, const char *statusLine2, int x, int
 void drawRadioText(int y, int ymax);
 void drawScale(uint32_t freq);
 void drawScaleWithSignals(uint32_t freq);
+int getBandMapType(uint32_t freqKhz);
 
 // Common layout helpers (shared by all layouts)
 void drawLayoutTop(void);

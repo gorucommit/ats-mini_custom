@@ -1,0 +1,1751 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>ATS Mini - Radio Controller</title>
+  <style>
+    :root {
+      --fh: Georgia, 'Times New Roman', serif;
+      --fd: 'Courier New', Courier, monospace;
+      --fm: Menlo, Monaco, Consolas, 'Courier New', monospace;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { height: 100%; }
+    body {
+      min-height: 100%;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      background: radial-gradient(ellipse at center, #2a1f1a 0%, #1a1210 50%, #0d0a08 100%);
+      font-family: var(--fm);
+      color: #d4a574;
+    }
+    .controller {
+      width: 100%; min-height: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr auto auto;
+      background: linear-gradient(145deg, #3d2e24 0%, #2a1f1a 50%, #1a1210 100%);
+      padding: 15px; gap: 12px;
+    }
+
+    /* Header */
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 8px 15px;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 2px solid #5a4a3a; border-radius: 8px;
+    }
+    .header h1 {
+      font-family: var(--fh);
+      font-size: 1.3em; color: #c9a227;
+      text-shadow: 0 0 10px rgba(201, 162, 39, 0.5);
+      letter-spacing: 3px;
+    }
+    .status-indicators { display: flex; gap: 15px; font-size: 0.85em; }
+    .status-item { display: flex; align-items: center; gap: 6px; }
+    .status-led {
+      width: 10px; height: 10px; border-radius: 50%;
+      background: #22c55e; box-shadow: 0 0 8px #22c55e;
+    }
+    .status-led.off { background: #ef4444; box-shadow: 0 0 8px #ef4444; }
+
+    /* Main Display */
+    .main-display {
+      display: grid;
+      grid-template-columns: 1fr 2fr 1fr;
+      gap: 15px; min-height: 0;
+    }
+
+    /* VU Panel */
+    .vu-panel {
+      background: linear-gradient(180deg, #0a0806 0%, #151210 50%, #0a0806 100%);
+      border: 3px solid #5a4a3a; border-radius: 12px;
+      padding: 15px; display: flex; flex-direction: column;
+      box-shadow: inset 0 5px 20px rgba(0,0,0,0.8), 0 2px 0 #8b6914;
+    }
+    .vu-title {
+      font-family: var(--fh);
+      font-size: 0.8em; color: #8b6914;
+      text-align: center; letter-spacing: 2px; margin-bottom: 10px;
+    }
+    .vu-meters { flex: 1; display: flex; flex-direction: column; gap: 15px; }
+    .vu-meter {
+      flex: 1;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 2px solid #3a3025; border-radius: 10px 10px 5px 5px;
+      padding: 10px; position: relative; overflow: hidden;
+    }
+    .vu-label {
+      font-size: 0.7em; color: #c9a227;
+      text-align: center; margin-bottom: 8px; letter-spacing: 1px;
+    }
+    .vu-scale {
+      position: relative; height: 60%;
+      background: radial-gradient(ellipse at bottom, #2a2520, #1a1510);
+      border-radius: 50% 50% 0 0 / 100% 100% 0 0;
+      overflow: hidden; border: 1px solid #3a3025;
+    }
+    .vu-scale-marks {
+      position: absolute; bottom: 0; left: 50%;
+      width: 100%; height: 100%; transform: translateX(-50%);
+    }
+    .vu-mark {
+      position: absolute; bottom: 0; left: 50%;
+      width: 2px; height: 30%; background: #5a4a3a;
+      transform-origin: bottom center;
+    }
+    .vu-mark.major { height: 40%; background: #8b6914; }
+    .vu-mark.red { background: #dc2626; }
+    .vu-needle {
+      position: absolute; bottom: 5px; left: 50%;
+      width: 3px; height: 70%;
+      background: linear-gradient(to top, #c9a227, #ff6b35);
+      transform-origin: bottom center;
+      transform: translateX(-50%) rotate(var(--rot, -45deg));
+      transition: transform 0.3s ease-out;
+      border-radius: 2px 2px 0 0;
+      box-shadow: 0 0 10px rgba(255, 107, 53, 0.5);
+    }
+    .vu-needle::after {
+      content: '';
+      position: absolute; bottom: -3px; left: 50%;
+      transform: translateX(-50%);
+      width: 10px; height: 10px;
+      background: radial-gradient(circle, #c9a227, #8b6914);
+      border-radius: 50%; box-shadow: 0 0 5px rgba(201, 162, 39, 0.5);
+    }
+    .vu-numbers {
+      display: flex; justify-content: space-between;
+      padding: 5px 10px 0; font-size: 0.6em; color: #6b5a4a;
+    }
+    .vu-lamp {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      margin: 6px auto 0;
+      background: radial-gradient(circle at 30% 30%, #1a1510, #0d0a08);
+      border: 1px solid #3a3025;
+      box-shadow: inset 0 0 6px rgba(0,0,0,0.8);
+      transition: box-shadow 0.12s ease, background 0.12s ease;
+    }
+    .vu-lamp.lit {
+      border-color: rgba(255,255,255,0.25);
+      box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 14px var(--lamp-color), 0 0 28px var(--lamp-color);
+    }
+    .vu-lamp.rssi-lamp { --lamp-color: #4ade80; }
+    .vu-lamp.rssi-lamp.lit {
+      background: radial-gradient(circle at 30% 30%, #6ee69a, #22c55e 50%, #16a34a);
+      box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 14px #4ade80, 0 0 28px rgba(74,222,128,0.85);
+    }
+    .vu-lamp.snr-lamp { --lamp-color: #ff6b35; }
+    .vu-lamp.snr-lamp.lit {
+      background: radial-gradient(circle at 30% 30%, #ff9f7a, #ff6b35 50%, #ea580c);
+      box-shadow: inset 0 0 6px rgba(255,255,255,0.5), 0 0 14px #ff6b35, 0 0 28px rgba(255,107,53,0.85);
+    }
+
+    /* Center Display */
+    .center-display {
+      background: linear-gradient(180deg, #0a0806 0%, #151210 50%, #0a0806 100%);
+      border: 3px solid #5a4a3a; border-radius: 12px;
+      padding: 20px; display: flex; flex-direction: column;
+      box-shadow: inset 0 5px 20px rgba(0,0,0,0.8), 0 2px 0 #8b6914;
+    }
+    .frequency-display {
+      text-align: center; padding: 15px;
+      background: linear-gradient(180deg, #0d0a08 0%, #1a1510 50%, #0d0a08 100%);
+      border: 2px solid #3a3025; border-radius: 10px; margin-bottom: 15px;
+    }
+    .frequency {
+      font-family: var(--fd);
+      font-size: 3.5em; font-weight: 900; color: #ff6b35;
+      text-shadow: 0 0 15px rgba(255,107,53,0.8), 0 0 30px rgba(255,107,53,0.4);
+      letter-spacing: 3px;
+      animation: freq-pulse 2.5s ease-in-out infinite;
+    }
+    @keyframes freq-pulse {
+      0%, 100% {
+        text-shadow: 0 0 8px rgba(255,107,53,0.5), 0 0 16px rgba(255,107,53,0.25);
+      }
+      50% {
+        text-shadow: 0 0 20px rgba(255,107,53,0.95), 0 0 40px rgba(255,107,53,0.6), 0 0 60px rgba(255,107,53,0.35);
+      }
+    }
+    .frequency-unit {
+      font-size: 0.35em; color: #c9a227;
+      margin-left: 8px; vertical-align: middle;
+    }
+    .frequency-clickable {
+      cursor: pointer; user-select: none;
+      border-radius: 4px; padding: 2px 6px;
+      transition: background 0.15s, box-shadow 0.15s;
+    }
+    .frequency-clickable:hover {
+      background: rgba(201, 162, 39, 0.15);
+      box-shadow: 0 0 8px rgba(201, 162, 39, 0.3);
+    }
+    .freq-edit-input {
+      font-family: var(--fd);
+      font-size: 3.5em; font-weight: 900;
+      color: #ff6b35; background: #0d0a08;
+      border: 2px solid #c9a227; border-radius: 4px;
+      padding: 4px 8px; width: 200px;
+      text-align: center; letter-spacing: 3px;
+    }
+    .freq-edit-input:focus { outline: none; box-shadow: 0 0 10px rgba(201, 162, 39, 0.5); }
+    .mode-dropdown {
+      font-family: var(--fm);
+      font-size: 0.95em; color: #c9a227;
+      background: linear-gradient(180deg, #2a2520 0%, #1a1510 100%);
+      border: 1px solid #5a4a3a; border-radius: 5px;
+      padding: 5px 24px 5px 10px;
+      cursor: pointer; appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='%23c9a227' viewBox='0 0 16 16'%3E%3Cpath d='M8 11L3 6h10l-5 5z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 6px center;
+    }
+    .mode-dropdown:hover { border-color: #8b6914; }
+    .mode-dropdown:focus { outline: none; box-shadow: 0 0 8px rgba(201, 162, 39, 0.4); }
+    .step-bw-row {
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; padding: 6px 10px;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 2px solid #5a4a3a; border-radius: 8px;
+    }
+    .step-bw-row .step-bw-value {
+      font-family: var(--fd);
+      font-size: 0.9em; color: #c9a227;
+      min-width: 48px; text-align: center;
+    }
+    .btn-arrow {
+      width: 32px; height: 32px;
+      padding: 0; border: none; border-radius: 6px;
+      cursor: pointer; font-size: 1.1em;
+      color: #d4a574;
+      background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 50%, #2a2a2a 100%);
+      border: 2px solid #6a6a6a;
+      box-shadow: 0 2px 0 #1a1a1a, inset 0 1px 0 rgba(255,255,255,0.08);
+      transition: all 0.15s;
+    }
+    .btn-arrow:hover {
+      background: linear-gradient(180deg, #6a6a6a 0%, #4a4a4a 100%);
+      border-color: #8b6914; color: #c9a227;
+      box-shadow: 0 2px 0 #2a2a2a, 0 0 10px rgba(201, 162, 39, 0.25);
+    }
+    .btn-arrow:active { transform: scale(0.95); box-shadow: 0 1px 0 #1a1a1a; }
+    .freq-bfo {
+      font-size: 0.8em; color: #8b7355; margin-top: 5px;
+    }
+    .band-mode-display {
+      display: flex; justify-content: center; gap: 20px; margin-top: 10px;
+    }
+    .band-mode-display span {
+      background: linear-gradient(180deg, #2a2520 0%, #1a1510 100%);
+      padding: 6px 18px; border-radius: 5px;
+      border: 1px solid #5a4a3a; font-size: 1em; color: #c9a227;
+    }
+    .band-mode-display .active-mode {
+      background: linear-gradient(180deg, #ff6b35 0%, #cc4a20 100%);
+      border-color: #ff8555; color: #fff;
+      box-shadow: 0 0 10px rgba(255,107,53,0.4);
+    }
+    .mode-selector {
+      cursor: pointer; transition: all 0.15s ease; user-select: none;
+    }
+    .mode-selector:hover {
+      background: linear-gradient(180deg, #3a3530 0%, #2a2520 100%);
+      border-color: #8b6914;
+    }
+    .mode-selector.clickable { border: 2px solid #8b6914; }
+    .mode-selector.clickable::after { content: ' \25BE'; font-size: 0.7em; opacity: 0.7; }
+    .mode-selector:active { transform: scale(0.95); }
+
+    /* Info Display */
+    .info-display {
+      background: linear-gradient(180deg, #0d0a08 0%, #151210 100%);
+      border: 2px solid #3a3025; border-radius: 8px;
+      padding: 12px; margin-bottom: 15px;
+      display: flex; align-items: flex-start; gap: 10px;
+    }
+    .info-display-text { flex: 1; min-width: 0; }
+    .station-name {
+      font-size: 1.3em; color: #4ade80;
+      text-shadow: 0 0 10px rgba(74,222,128,0.5);
+      text-align: center; margin-bottom: 5px;
+    }
+    .radio-text {
+      font-size: 0.9em; color: #8b7355; text-align: center;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+      margin-bottom: 4px;
+    }
+    .radio-text-ext {
+      font-size: 0.8em; color: #6b5a4a; text-align: center;
+      overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+    }
+    .rds-toggle-wrap { flex-shrink: 0; display: none; }
+    .rds-toggle-wrap .fader-toggle { margin-top: 0; font-size: 0.5em; padding: 4px 6px; }
+    .mascot-wrap {
+      display: flex; justify-content: center; align-items: center;
+      padding: 8px 0; flex-shrink: 0;
+    }
+    .mascot-piggy {
+      display: block; width: 56px; height: 56px; object-fit: contain;
+    }
+
+    /* Signal Display - match height of VU and right panel */
+    .signal-display {
+      flex: 1;
+      min-height: 180px;
+      background: linear-gradient(180deg, #0d0a08 0%, #1a1510 100%);
+      border: 2px solid #3a3025; border-radius: 8px;
+      padding: 10px; position: relative;
+    }
+    .signal-title {
+      font-size: 0.7em; color: #6b5a4a;
+      position: absolute; top: 5px; left: 10px;
+    }
+    .signal-display-actions {
+      position: absolute; top: 2px; right: 10px;
+      display: flex; gap: 8px; align-items: center;
+    }
+    .signal-display-actions .bw-label {
+      font-size: 0.7em; color: #c9a227;
+    }
+    .signal-display-actions .btn-scan,
+    .signal-display-actions .btn-scan-exit {
+      margin: 0; padding: 3px 6px;
+      font-size: 0.7em; font-family: var(--fm);
+      background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+      border: 1px solid #4a4a4a; border-radius: 3px;
+      color: #6b5a4a; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: all 0.15s ease;
+    }
+    .signal-display-actions .btn-scan:hover,
+    .signal-display-actions .btn-scan-exit:hover {
+      border-color: #6a6a6a; color: #8b7355;
+    }
+    .signal-display-actions .btn-scan-exit {
+      color: #8b7355;
+    }
+    .signal-display { position: relative; }
+    #sigCanvas {
+      width: 100%; height: calc(100% - 25px); margin-top: 20px;
+      min-height: 160px;
+      background: #0a0806; border-radius: 4px; display: block;
+      cursor: crosshair;
+    }
+    .scan-marker-tooltip {
+      position: absolute; display: none;
+      background: rgba(10,8,6,0.95); border: 1px solid #c9a227;
+      color: #ffdd66; font-family: var(--fd); font-size: 12px;
+      padding: 4px 8px; border-radius: 4px; pointer-events: none;
+      z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.6);
+    }
+    .scan-marker-tooltip.visible { display: block; }
+    .api-toast {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      background: rgba(220, 38, 38, 0.95); color: #fff;
+      padding: 8px 16px; border-radius: 6px; font-size: 0.85em;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 100;
+      opacity: 0; pointer-events: none; transition: opacity 0.2s ease;
+    }
+    .api-toast.visible { opacity: 1; }
+
+    /* Right Panel - horizontal faders stacked, full width */
+    .right-panel {
+      background: linear-gradient(180deg, #0a0806 0%, #151210 50%, #0a0806 100%);
+      border: 3px solid #5a4a3a; border-radius: 12px;
+      padding: 10px; display: flex; flex-direction: column; gap: 8px;
+      box-shadow: inset 0 5px 20px rgba(0,0,0,0.8), 0 2px 0 #8b6914;
+    }
+    .mixer-faders { display: flex; flex-direction: column; gap: 8px; flex: 1; min-height: 0; }
+    .fader-channel {
+      display: flex; flex-direction: row; align-items: center; gap: 8px;
+      padding: 4px 6px;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 1px solid #3a3025; border-radius: 4px;
+      width: 100%; box-sizing: border-box;
+    }
+    .fader-channel.hidden { display: none; }
+    .fader-label {
+      font-size: 0.6em; font-weight: bold; color: #c9a227;
+      min-width: 28px; letter-spacing: 1px;
+    }
+    .fader-container { flex: 1; min-width: 0; height: 24px; }
+    .fader-track {
+      position: relative; width: 100%; height: 100%; touch-action: none;
+    }
+    .fader-slot {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      left: 4px; right: 4px; height: 6px;
+      background: linear-gradient(90deg, #0a0806, #1a1510, #0a0806);
+      border: 1px solid #2a2520; border-radius: 3px;
+      box-shadow: inset 0 2px 6px rgba(0,0,0,0.8);
+    }
+    .fader-slot::before {
+      content: ''; position: absolute;
+      top: 50%; transform: translateY(-50%);
+      left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg,
+        #dc2626 0%, #fbbf24 35%, #22c55e 100%);
+      border-radius: 1px; opacity: 0.6;
+    }
+    .fader-knob {
+      position: absolute; top: 50%; transform: translateY(-50%);
+      left: 0; right: auto; width: 18px; height: 20px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: ew-resize; touch-action: none;
+    }
+    .fader-knob-visual {
+      width: 18px; height: 20px;
+      background: linear-gradient(180deg,
+        #1a1a1a, #3a3a3a 15%, #5a5a5a 50%, #3a3a3a 85%, #1a1a1a);
+      border: 1px solid #4a4a4a; border-radius: 2px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+      position: relative;
+    }
+    .fader-knob-visual:hover {
+      border-color: #6a6a6a;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.2), 0 0 8px rgba(201,162,39,0.2);
+    }
+    .fader-knob-visual::after {
+      content: ''; position: absolute;
+      top: 50%; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, #c9a227, #ffdd66, #c9a227);
+      transform: translateY(-50%);
+      box-shadow: 0 0 4px rgba(201,162,39,0.5);
+    }
+    .fader-value {
+      font-family: var(--fd);
+      font-size: 0.6em; color: #8b7355;
+      min-width: 24px; text-align: right;
+    }
+    .fader-channel.disabled .fader-knob-visual { opacity: 0.5; cursor: not-allowed; }
+    .fader-channel.disabled .fader-slot::before { opacity: 0.3; }
+
+    /* Toggle */
+    .fader-toggle {
+      margin-top: 4px; padding: 3px 2px;
+      font-size: 0.45em; font-family: var(--fm);
+      background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+      border: 1px solid #4a4a4a; border-radius: 3px;
+      color: #6b5a4a; cursor: pointer;
+      display: flex; align-items: center; gap: 3px;
+      transition: all 0.15s ease;
+    }
+    .fader-toggle:hover { border-color: #6a6a6a; color: #8b7355; }
+    .fader-toggle.active {
+      background: linear-gradient(180deg, #2a3a2a 0%, #1a2a1a 100%);
+      border-color: #22c55e; color: #22c55e;
+    }
+    .toggle-led {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: #3a3025; border: 1px solid #2a2520;
+      transition: all 0.15s ease;
+    }
+    .fader-toggle.active .toggle-led {
+      background: #22c55e; box-shadow: 0 0 6px #22c55e;
+    }
+    /* Control buttons: same style as fader-toggle, no LED */
+    .btn-control {
+      margin: 0; padding: 3px 2px;
+      font-size: 0.45em; font-family: var(--fm);
+      background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
+      border: 1px solid #4a4a4a; border-radius: 3px;
+      color: #6b5a4a; cursor: pointer;
+      display: inline-flex; align-items: center; justify-content: center;
+      transition: all 0.15s ease;
+    }
+    .btn-control:hover { border-color: #6a6a6a; color: #8b7355; }
+    .control-row .btn-control { padding: 8px 16px; font-size: 0.9em; }
+    .step-bw-row .btn-control { width: 32px; height: 32px; padding: 0; font-size: 1em; }
+    #muteBtn.fader-toggle.active {
+      border-color: #dc2626; color: #dc2626;
+    }
+    #muteBtn.fader-toggle.active .toggle-led {
+      background: #dc2626; box-shadow: 0 0 6px #dc2626;
+    }
+
+    /* Right Panel Info */
+    .right-panel-content {
+      flex: 1; display: flex; flex-direction: column; justify-content: center;
+    }
+    .tuning-info { text-align: center; margin-bottom: 10px; }
+    .tuning-info-label { font-size: 0.6em; color: #6b5a4a; margin-bottom: 3px; }
+    .tuning-info-value {
+      font-family: var(--fd);
+      font-size: 1em; color: #c9a227;
+    }
+
+    /* Control Row */
+    .control-row {
+      display: flex; gap: 10px; justify-content: center; align-items: center;
+      padding: 10px;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 2px solid #5a4a3a; border-radius: 8px;
+    }
+    .btn {
+      font-family: var(--fm);
+      font-size: 0.9em; padding: 12px 20px;
+      border: none; border-radius: 8px;
+      cursor: pointer; transition: all 0.15s ease;
+      text-transform: uppercase; letter-spacing: 1px;
+    }
+    .btn-brass {
+      background: linear-gradient(180deg, #c9a227 0%, #8b6914 50%, #6b5210 100%);
+      color: #1a1210; border: 2px solid #d4b84a;
+      box-shadow: 0 4px 0 #5a4a3a, 0 6px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.3);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-brass:hover { background: linear-gradient(180deg, #d4b84a 0%, #a07a18 50%, #8b6914 100%); }
+    .btn-brass:active { transform: translateY(3px); box-shadow: 0 1px 0 #5a4a3a; }
+    .btn-copper {
+      background: linear-gradient(180deg, #b87333 0%, #8b4513 50%, #6b3410 100%);
+      color: #fff5e6; border: 2px solid #cd7f32;
+      box-shadow: 0 4px 0 #4a2a1a, 0 6px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+    }
+    .btn-copper:hover { background: linear-gradient(180deg, #cd7f32 0%, #a55d35 50%, #8b4513 100%); }
+    .btn-copper:active { transform: translateY(3px); box-shadow: 0 1px 0 #4a2a1a; }
+    .btn-steel {
+      background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 50%, #2a2a2a 100%);
+      color: #d4a574; border: 2px solid #6a6a6a;
+      box-shadow: 0 4px 0 #1a1a1a, 0 6px 10px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .btn-steel:hover { background: linear-gradient(180deg, #6a6a6a 0%, #4a4a4a 50%, #3a3a3a 100%); }
+    .btn-steel:active { transform: translateY(3px); box-shadow: 0 1px 0 #1a1a1a; }
+    .btn-large { font-size: 1.4em; padding: 15px 25px; }
+    .btn-step {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 10px 18px;
+    }
+    .btn-step .step-value { font-size: 0.65em; color: #1a1210; margin-top: 2px; }
+    .stereo-badge {
+      font-size: 0.85em; color: #22c55e;
+      text-shadow: 0 0 8px rgba(34,197,94,0.5);
+    }
+
+    /* Band Selector */
+    .band-selector-row {
+      display: grid; grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px; padding: 10px;
+      background: linear-gradient(180deg, #1a1510 0%, #0d0a08 100%);
+      border: 2px solid #5a4a3a; border-radius: 8px;
+    }
+    .band-group { display: flex; flex-direction: column; }
+    .band-group-title {
+      font-family: var(--fh);
+      font-size: 0.7em; color: #8b6914;
+      text-align: center; letter-spacing: 2px; margin-bottom: 8px;
+      text-transform: uppercase;
+    }
+    .band-buttons {
+      display: flex; flex-wrap: wrap; gap: 5px; justify-content: center;
+    }
+    .btn-band {
+      padding: 8px 10px; font-size: 0.75em; min-width: 45px;
+      font-family: var(--fm); cursor: pointer;
+      border: none; border-radius: 8px; transition: all 0.15s;
+    }
+    .btn-band.active {
+      background: linear-gradient(180deg, #ff6b35 0%, #cc4a20 50%, #a03a15 100%) !important;
+      border-color: #ff8555 !important; color: #fff !important;
+      box-shadow: 0 4px 0 #6b2a10, 0 0 15px rgba(255,107,53,0.4), inset 0 1px 0 rgba(255,255,255,0.3) !important;
+    }
+    /* HAM bands - blue */
+    .band-group.ham .btn-band {
+      background: linear-gradient(180deg, #4a6fa5 0%, #355882 50%, #284466 100%);
+      border: 2px solid #5a8fc5; color: #e0f0ff;
+      box-shadow: 0 4px 0 #1a3a5a, 0 6px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .band-group.ham .btn-band:hover {
+      background: linear-gradient(180deg, #5a8fc5 0%, #4a6fa5 50%, #355882 100%);
+    }
+    .band-group.ham .btn-band:active { transform: translateY(3px); box-shadow: 0 1px 0 #1a3a5a; }
+    /* General bands - steel */
+    .band-group.general .btn-band {
+      background: linear-gradient(180deg, #5a5a5a 0%, #3a3a3a 50%, #2a2a2a 100%);
+      border: 2px solid #6a6a6a; color: #d4a574;
+      box-shadow: 0 4px 0 #1a1a1a, 0 6px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .band-group.general .btn-band:hover {
+      background: linear-gradient(180deg, #6a6a6a 0%, #4a4a4a 50%, #3a3a3a 100%);
+    }
+    .band-group.general .btn-band:active { transform: translateY(3px); box-shadow: 0 1px 0 #1a1a1a; }
+    /* Broadcast bands - amber */
+    .band-group.broadcast .btn-band {
+      background: linear-gradient(180deg, #a56b4a 0%, #825535 50%, #664428 100%);
+      border: 2px solid #c58f5a; color: #fff0e0;
+      box-shadow: 0 4px 0 #3a2a1a, 0 6px 10px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+    .band-group.broadcast .btn-band:hover {
+      background: linear-gradient(180deg, #c58f5a 0%, #a56b4a 50%, #825535 100%);
+    }
+    .band-group.broadcast .btn-band:active { transform: translateY(3px); box-shadow: 0 1px 0 #3a2a1a; }
+
+    /* Responsive - tablet and phone: single column, hide only VU panel */
+    @media (max-width: 900px) {
+      .main-display { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+      .vu-panel { display: none; }
+      .frequency, .freq-edit-input { font-size: 2.5em; }
+      .right-panel-content {
+        flex: none;
+      }
+      .tuning-info { margin-bottom: 6px; }
+      .step-bw-row { display: flex; align-items: center; justify-content: center; gap: 4px; }
+      .signal-display { min-height: 140px; flex: none; }
+      #sigCanvas { min-height: 100px; }
+    }
+    /* Responsive - phone */
+    @media (max-width: 600px) {
+      .controller { padding: 10px; gap: 8px; }
+      .header {
+        padding: 6px 10px;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .header h1 { font-size: 1em; letter-spacing: 1px; }
+      .status-indicators {
+        flex-wrap: wrap;
+        gap: 8px;
+        font-size: 0.75em;
+      }
+      .main-display { gap: 10px; min-height: 280px; }
+      .center-display { padding: 12px; }
+      .frequency-display { padding: 10px; margin-bottom: 10px; }
+      .frequency, .freq-edit-input { font-size: 2em; }
+      .frequency-unit { font-size: 0.4em; }
+      .band-mode-display { gap: 10px; margin-top: 8px; }
+      .band-mode-display span, .mode-selector { padding: 4px 12px; font-size: 0.9em; }
+      .info-display { padding: 8px; margin-bottom: 10px; }
+      .station-name { font-size: 1.1em; }
+      .radio-text { font-size: 0.85em; }
+      .signal-display { padding: 8px; min-height: 160px; flex: none; }
+      .signal-display-actions {
+        flex-wrap: wrap;
+        gap: 6px;
+        right: 6px;
+      }
+      .signal-display-actions .bw-label { font-size: 0.65em; }
+      .signal-display-actions .btn-scan, .signal-display-actions .btn-scan-exit { font-size: 0.65em; padding: 3px 5px; }
+      #sigCanvas { margin-top: 18px; height: 140px; min-height: 140px; }
+      .control-row {
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 8px;
+        justify-content: center;
+      }
+      .btn {
+        padding: 12px 16px;
+        font-size: 0.85em;
+        min-height: 44px;
+        min-width: 44px;
+      }
+      .btn-large { font-size: 1.1em; padding: 12px 18px; min-width: 48px; }
+      #muteBtn { min-width: 52px; }
+      .band-selector-row { grid-template-columns: 1fr; gap: 8px; padding: 8px; }
+      .band-group-title { font-size: 0.65em; margin-bottom: 6px; }
+      .btn-band { padding: 10px 12px; font-size: 0.8em; min-width: 52px; min-height: 44px; }
+    }
+    /* Responsive - small phone */
+    @media (max-width: 380px) {
+      .controller { padding: 6px; gap: 6px; }
+      .header h1 { font-size: 0.9em; }
+      .status-indicators { font-size: 0.7em; }
+      .frequency, .freq-edit-input { font-size: 1.65em; }
+      .control-row { gap: 6px; padding: 6px; }
+      .btn-large { font-size: 1em; padding: 10px 14px; }
+      .signal-display-actions .btn-scan, .signal-display-actions .btn-scan-exit { font-size: 0.6em; padding: 2px 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="apiToast" class="api-toast" aria-live="polite"></div>
+  <div class="controller">
+    <!-- Header -->
+    <div class="header">
+      <h1>ATS MINI</h1>
+      <div class="status-indicators">
+        <div class="status-item">
+          <div class="status-led" id="connLed"></div>
+          <span id="connTxt">Connecting...</span>
+        </div>
+        <div class="status-item" id="stereoBox" style="display:none">
+          <span class="stereo-badge">STEREO</span>
+        </div>
+        <div class="status-item"><span id="rssiTxt">RSSI: --</span></div>
+        <div class="status-item"><span id="snrTxt">SNR: --</span></div>
+      </div>
+    </div>
+
+    <!-- Main Display -->
+    <div class="main-display">
+      <!-- VU Meters -->
+      <div class="vu-panel">
+        <div class="vu-title">&mdash; Signal Meters &mdash;</div>
+        <div class="vu-meters">
+          <div class="vu-meter">
+            <div class="vu-label">RSSI</div>
+            <div class="vu-scale">
+              <div class="vu-scale-marks">
+                <div class="vu-mark" style="transform:rotate(-60deg)"></div>
+                <div class="vu-mark" style="transform:rotate(-45deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(-30deg)"></div>
+                <div class="vu-mark" style="transform:rotate(-15deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(0deg)"></div>
+                <div class="vu-mark" style="transform:rotate(15deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(30deg)"></div>
+                <div class="vu-mark red" style="transform:rotate(45deg)"></div>
+                <div class="vu-mark red" style="transform:rotate(60deg)"></div>
+              </div>
+              <div class="vu-needle" id="rssiNdl" style="--rot:-60deg"></div>
+            </div>
+            <div class="vu-numbers"><span>0</span><span>S3</span><span>S6</span><span>S9</span><span>+20</span></div>
+            <div class="vu-lamp rssi-lamp" id="rssiLamp" title="Signal strength"></div>
+          </div>
+          <div class="vu-meter">
+            <div class="vu-label">SNR</div>
+            <div class="vu-scale">
+              <div class="vu-scale-marks">
+                <div class="vu-mark" style="transform:rotate(-60deg)"></div>
+                <div class="vu-mark" style="transform:rotate(-45deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(-30deg)"></div>
+                <div class="vu-mark" style="transform:rotate(-15deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(0deg)"></div>
+                <div class="vu-mark" style="transform:rotate(15deg)"></div>
+                <div class="vu-mark major" style="transform:rotate(30deg)"></div>
+                <div class="vu-mark red" style="transform:rotate(45deg)"></div>
+                <div class="vu-mark red" style="transform:rotate(60deg)"></div>
+              </div>
+              <div class="vu-needle" id="snrNdl" style="--rot:-60deg"></div>
+            </div>
+            <div class="vu-numbers"><span>0</span><span>10</span><span>20</span><span>30</span><span>40</span></div>
+            <div class="vu-lamp snr-lamp" id="snrLamp" title="Signal quality"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Center Display -->
+      <div class="center-display">
+        <div class="frequency-display">
+          <div class="frequency-clickable" id="freqWrap" title="Click to enter frequency">
+            <span class="frequency" id="freqDisp">---<span class="frequency-unit" id="freqUnit">MHz</span></span>
+            <input type="text" class="freq-edit-input" id="freqInput" style="display:none" maxlength="12" />
+          </div>
+          <div class="freq-bfo" id="bfoDisp"></div>
+          <div class="band-mode-display">
+            <span id="bandLabel" class="active-mode">--</span>
+            <span id="modeStatic" style="display:none">--</span>
+            <select id="modeSelect" class="mode-dropdown" style="display:none"></select>
+          </div>
+        </div>
+        <div class="info-display">
+          <div class="info-display-text">
+            <div class="station-name" id="stName">---</div>
+            <div class="radio-text" id="rdTxt">---</div>
+            <div class="radio-text-ext" id="rdTxtExt"></div>
+          </div>
+          <div class="rds-toggle-wrap">
+            <button type="button" class="fader-toggle" id="rdsModeBtn" title="RDS display: PS or All (EU)"><div class="toggle-led"></div><span id="rdsModeLabel">PS</span></button>
+          </div>
+        </div>
+        <div class="signal-display">
+          <span class="signal-title">SIGNAL SPECTRUM</span>
+          <div class="signal-display-actions">
+            <span class="bw-label">BW: <span id="bwVal2">--</span></span>
+            <button type="button" class="btn-scan" id="fullScanBtn">Full Scan</button>
+            <button type="button" class="btn-scan-exit" id="exitScanBtn" style="display:none">Exit band scan</button>
+          </div>
+          <canvas id="sigCanvas"></canvas>
+          <div id="scanMarkerTooltip" class="scan-marker-tooltip" aria-hidden="true"></div>
+        </div>
+      </div>
+
+      <!-- Right Panel -->
+      <div class="right-panel">
+        <div class="mixer-faders">
+          <!-- VOL -->
+          <div class="fader-channel" id="volCh">
+            <div class="fader-label">VOL</div>
+            <div class="fader-container">
+              <div class="fader-track" id="volTrack">
+                <div class="fader-slot"></div>
+                <div class="fader-knob" id="volKnob"><div class="fader-knob-visual"></div></div>
+              </div>
+            </div>
+            <div class="fader-value" id="volVal">--</div>
+          </div>
+          <!-- SQL -->
+          <div class="fader-channel" id="sqlCh">
+            <div class="fader-label">SQL</div>
+            <div class="fader-container">
+              <div class="fader-track" id="sqlTrack">
+                <div class="fader-slot"></div>
+                <div class="fader-knob" id="sqlKnob"><div class="fader-knob-visual"></div></div>
+              </div>
+            </div>
+            <div class="fader-value" id="sqlVal">--</div>
+          </div>
+          <!-- AGC -->
+          <div class="fader-channel" id="agcCh">
+            <div class="fader-label">AGC</div>
+            <div class="fader-container">
+              <div class="fader-track" id="agcTrack">
+                <div class="fader-slot"></div>
+                <div class="fader-knob" id="agcKnob"><div class="fader-knob-visual"></div></div>
+              </div>
+            </div>
+            <div class="fader-value" id="agcVal">--</div>
+            <button class="fader-toggle active" id="agcAutoBtn">
+              <div class="toggle-led"></div>AUTO
+            </button>
+          </div>
+          <!-- AVC -->
+          <div class="fader-channel" id="avcCh">
+            <div class="fader-label">AVC</div>
+            <div class="fader-container">
+              <div class="fader-track" id="avcTrack">
+                <div class="fader-slot"></div>
+                <div class="fader-knob" id="avcKnob"><div class="fader-knob-visual"></div></div>
+              </div>
+            </div>
+            <div class="fader-value" id="avcVal">--</div>
+          </div>
+        </div>
+        <div class="mascot-wrap">
+          <img src="../../steampigg.png" alt="" class="mascot-piggy" width="56" height="56" loading="lazy" decoding="async" id="mascotPiggy" onerror="this.style.display='none'">
+        </div>
+        <div class="right-panel-content">
+          <div class="vu-title">&mdash; Info &mdash;</div>
+          <div class="tuning-info">
+            <div class="tuning-info-label">STEP</div>
+            <div class="step-bw-row">
+              <button type="button" class="btn-control" id="stepLeftInfo" title="Previous step">&#9664;</button>
+              <span class="step-bw-value" id="stepDisp">--</span>
+              <button type="button" class="btn-control" id="stepRightInfo" title="Next step">&#9654;</button>
+            </div>
+          </div>
+          <div class="tuning-info">
+            <div class="tuning-info-label">BANDWIDTH</div>
+            <div class="step-bw-row">
+              <button type="button" class="btn-control" id="bwLeftInfo" title="Previous BW">&#9664;</button>
+              <span class="step-bw-value" id="bwDisp">--</span>
+              <button type="button" class="btn-control" id="bwRightInfo" title="Next BW">&#9654;</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Control Row -->
+    <div class="control-row">
+      <button class="btn-control" id="seekDn" title="Seek down">&#9664;&#9664;</button>
+      <button class="btn-control" id="tuneDn" title="Tune down">&minus;</button>
+      <button class="btn-control" id="tuneUp" title="Tune up">+</button>
+      <button class="btn-control" id="seekUp" title="Seek up">&#9654;&#9654;</button>
+      <button class="fader-toggle" id="muteBtn" title="Mute"><div class="toggle-led"></div>MUTE</button>
+    </div>
+
+    <!-- Band Selector -->
+    <div class="band-selector-row">
+      <div class="band-group ham">
+        <div class="band-group-title">&mdash; Amateur &mdash;</div>
+        <div class="band-buttons" id="hamBands"></div>
+      </div>
+      <div class="band-group general">
+        <div class="band-group-title">&mdash; General &mdash;</div>
+        <div class="band-buttons" id="genBands"></div>
+      </div>
+      <div class="band-group broadcast">
+        <div class="band-group-title">&mdash; Broadcast &mdash;</div>
+        <div class="band-buttons" id="bcBands"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================
+    // STATE
+    // ============================================
+    var opts = null;
+    var es = null;
+    var lastStatus = null;
+    var isMuted = false;
+    var agcAuto = true;
+    var dragId = null;
+
+    // Fader configs: {min, max, step, api}
+    var FC = {
+      vol: {min:0, max:63, step:1, api:'/api/volume'},
+      sql: {min:0, max:127, step:1, api:'/api/squelch'},
+      agc: {min:1, max:37, step:1, api:'/api/agc'},
+      avc: {min:12, max:90, step:2, api:'/api/avc'}
+    };
+
+    // VU meter animation
+    var rssiT=0, snrT=0, rssiC=0, snrC=0;
+    var animId = null;
+    var sigId = null;
+    var lastSigDraw = 0;
+    var canvasCtx = null;
+    // Signal history: [{rssi, snr, ts}, ...], newest at end; max 30 seconds
+    var signalHistory = [];
+    var signalHistoryMaxLen = 400;
+    var SIGNAL_HISTORY_MS = 30000;
+    var seekingDirection = 0;  // -1 = seeking down, 0 = none, 1 = seeking up
+    var scanInProgress = false;
+    var scanData = null;  // { startFreq, step, count, points: [{rssi,snr},...] } from /api/scan
+    var scanBandIndex = null;  // band index the scan was taken on (avoids drawing HF kHz on FM scale)
+    var lastBandState = null;  // { bandMin, span, drawW, padX, w, isFm, markerFreqs } for canvas hit-test
+    var pendingTuneFreq = null;
+    var targetBand = null;
+
+    // ============================================
+    // API
+    // ============================================
+    function showApiError(msg) {
+      var el = document.getElementById('apiToast');
+      if (!el) return;
+      el.textContent = msg;
+      el.classList.add('visible');
+      clearTimeout(el._toastTimer);
+      el._toastTimer = setTimeout(function() { el.classList.remove('visible'); }, 3000);
+    }
+    function apiPost(ep, data) {
+      return fetch(ep, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(data)
+      }).then(function(r) {
+        if (!r.ok) {
+          var msg = (r.status === 503) ? 'Command queue full — try again' : 'Command failed';
+          showApiError(msg);
+          return r;
+        }
+        return r;
+      }).catch(function(e) {
+        console.error('API error:', e);
+        showApiError('Connection error');
+        throw e;
+      });
+    }
+
+    // ============================================
+    // SSE
+    // ============================================
+    function connectSSE() {
+      if (es) { es.close(); es = null; }
+      es = new EventSource('/events');
+
+      es.onopen = function() {
+        document.getElementById('connLed').classList.remove('off');
+        document.getElementById('connTxt').textContent = 'Connected';
+      };
+
+      es.onerror = function() {
+        document.getElementById('connLed').classList.add('off');
+        document.getElementById('connTxt').textContent = 'Reconnecting...';
+        if (es && es.readyState === EventSource.CLOSED) {
+          es = null;
+          setTimeout(connectSSE, 3000);
+        }
+      };
+
+      es.addEventListener('status', function(e) {
+        try { updateUI(JSON.parse(e.data)); }
+        catch(err) { console.error('SSE parse:', err); }
+      });
+    }
+
+    // ============================================
+    // UI UPDATE
+    // ============================================
+    function updateUI(s) {
+      lastStatus = s;
+      var isFM = s.mode === 0;
+      var freqDisp = document.getElementById('freqDisp');
+      var freqInput = document.getElementById('freqInput');
+      if (freqInput.style.display !== 'block') {
+        var freqStr = isFM ? (s.freq / 100).toFixed(2) : s.freq.toString();
+        freqDisp.innerHTML = freqStr + '<span class="frequency-unit">' + (isFM ? 'MHz' : 'kHz') + '</span>';
+      }
+
+      // BFO
+      document.getElementById('bfoDisp').textContent =
+        (s.bfo !== 0) ? 'BFO: ' + s.bfo + ' Hz' : '';
+
+      // Band
+      document.getElementById('bandLabel').textContent = s.bandName;
+
+      // Mode: dropdown for non-FM, static text for FM
+      var modeStatic = document.getElementById('modeStatic');
+      var modeSelect = document.getElementById('modeSelect');
+      if (isFM) {
+        modeStatic.style.display = '';
+        modeSelect.style.display = 'none';
+        modeStatic.textContent = s.stereo ? 'STEREO' : 'MONO';
+      } else {
+        modeStatic.style.display = 'none';
+        modeSelect.style.display = '';
+        if (modeSelect.options.length === 0 && opts && opts.modes) {
+          for (var i = 1; i <= 3; i++) {
+            modeSelect.appendChild(document.createElement('option')).value = i; modeSelect.options[modeSelect.options.length - 1].textContent = opts.modes[i];
+          }
+        }
+        modeSelect.value = s.mode;
+      }
+
+      // Stereo indicator
+      document.getElementById('stereoBox').style.display = s.stereo ? '' : 'none';
+
+      // Station info
+      document.getElementById('stName').textContent = s.station || s.bandName;
+      document.getElementById('rdTxt').textContent = s.radioText || '';
+
+      // RSSI / SNR text
+      document.getElementById('rssiTxt').textContent = 'RSSI: ' + s.rssi;
+      document.getElementById('snrTxt').textContent = 'SNR: ' + s.snr;
+
+      // VU meter targets
+      rssiT = Math.min(s.rssi, 60);
+      snrT = Math.min(s.snr, 40);
+
+      // Step & BW (info panel only)
+      document.getElementById('stepDisp').textContent = s.stepDesc;
+      document.getElementById('bwDisp').textContent = s.bwDesc;
+      document.getElementById('bwVal2').textContent = s.bwDesc;
+
+      // AGC
+      FC.agc.max = s.agcMax || 37;
+      agcAuto = s.agcAuto;
+      var agcBtn = document.getElementById('agcAutoBtn');
+      agcBtn.classList.toggle('active', agcAuto);
+      document.getElementById('agcCh').classList.toggle('disabled', agcAuto);
+
+      // AVC visibility
+      document.getElementById('avcCh').classList.toggle('hidden', !s.avcAvail);
+
+      // RDS display: PS (0) or All (EU) (6) — only when FM
+      var rdsWrap = document.querySelector('.rds-toggle-wrap');
+      if (rdsWrap) rdsWrap.style.display = (s.mode === 0) ? '' : 'none';
+      var rdsModeIdx = (s.rdsModeIdx !== undefined) ? s.rdsModeIdx : 0;
+      var rdsAllEu = (rdsModeIdx === 6);
+      var rdsLabel = document.getElementById('rdsModeLabel');
+      var rdsBtn = document.getElementById('rdsModeBtn');
+      if (rdsLabel) rdsLabel.textContent = rdsAllEu ? 'All (EU)' : 'PS';
+      if (rdsBtn) rdsBtn.classList.toggle('active', rdsAllEu);
+
+      // Mute (sync from server so encoder/other client changes are reflected)
+      if (s.mute !== undefined) {
+        isMuted = !!s.mute;
+        var muteBtn = document.getElementById('muteBtn');
+        if (muteBtn) muteBtn.classList.toggle('active', isMuted);
+      }
+
+      // Pending tune after band switch (wait for band to match then tune)
+      if (pendingTuneFreq != null && targetBand != null && s.band === targetBand) {
+        apiPost('/api/tune', { freq: pendingTuneFreq });
+        pendingTuneFreq = null;
+        targetBand = null;
+      }
+
+      // Faders (skip if user is dragging that fader)
+      if (dragId !== 'vol') setFaderPos('vol', s.vol);
+      if (dragId !== 'sql') setFaderPos('sql', s.sql);
+      if (dragId !== 'agc') setFaderPos('agc', agcAuto ? 0 : s.agc);
+      if (dragId !== 'avc' && s.avcAvail) setFaderPos('avc', s.avc);
+
+      // Active band
+      var btns = document.querySelectorAll('.btn-band');
+      for (var i = 0; i < btns.length; i++) {
+        btns[i].classList.toggle('active', parseInt(btns[i].dataset.idx) === s.band);
+      }
+      if (s.seeking) seekingDirection = (s.seekDirection > 0) ? 1 : (s.seekDirection < 0) ? -1 : (seekingDirection || 1);
+      else seekingDirection = 0;
+      updateSeekButtonLabels();
+      /* Only show sweep/STOP when scan is actually running; once scanHasData, we're in "results" mode */
+      scanInProgress = !!s.inScanMode && !s.scanHasData;
+
+      if (s.scanHasData) {
+        fetch('/api/scan').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
+          scanData = d;
+          scanBandIndex = (s && s.band !== undefined) ? s.band : null;
+        }).catch(function() {});
+      } else {
+        scanData = null;
+        scanBandIndex = null;
+      }
+      var fullBtn = document.getElementById('fullScanBtn');
+      var exitBtn = document.getElementById('exitScanBtn');
+      if (fullBtn) fullBtn.textContent = scanInProgress ? 'STOP' : 'Full Scan';
+      if (exitBtn) exitBtn.style.display = s.inScanMode ? '' : 'none';
+
+      // Append to signal history (max 30 sec); trim by time so it scrolls off
+      var cv = document.getElementById('sigCanvas');
+      if (cv && cv.offsetWidth) signalHistoryMaxLen = Math.max(100, cv.offsetWidth);
+      var now = Date.now();
+      signalHistory.push({ rssi: s.rssi, snr: s.snr, ts: now });
+      while (signalHistory.length > 0 && signalHistory[0].ts < now - SIGNAL_HISTORY_MS) signalHistory.shift();
+      while (signalHistory.length > signalHistoryMaxLen) signalHistory.shift();
+    }
+
+    // ============================================
+    // FADERS
+    // ============================================
+    function setFaderPos(id, val) {
+      var c = FC[id];
+      var track = document.getElementById(id + 'Track');
+      var knob = document.getElementById(id + 'Knob');
+      var disp = document.getElementById(id + 'Val');
+      if (!track || !knob) return;
+
+      var mn = (id === 'agc' && val === 0) ? 0 : c.min;
+      var mx = c.max;
+      var pct = mx > mn ? (val - mn) / (mx - mn) : 0;
+      pct = Math.max(0, Math.min(1, pct));
+      var w = track.offsetWidth - 18;
+      if (w < 0) w = 0;
+      knob.style.left = (pct * w) + 'px';
+      knob.style.bottom = '';
+      if (disp) disp.textContent = val;
+    }
+
+    function faderStart(id, e) {
+      if (id === 'agc' && agcAuto) return;
+      e.preventDefault();
+      dragId = id;
+      faderMove(e);
+    }
+
+    function faderMove(e) {
+      if (!dragId) return;
+      var c = FC[dragId];
+      var track = document.getElementById(dragId + 'Track');
+      var knob = document.getElementById(dragId + 'Knob');
+      if (!track || !knob) return;
+
+      var rect = track.getBoundingClientRect();
+      var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      var pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+      var val = c.min + pct * (c.max - c.min);
+      if (c.step > 1) val = Math.round(val / c.step) * c.step;
+      else val = Math.round(val);
+      val = Math.max(c.min, Math.min(c.max, val));
+
+      pct = (c.max > c.min) ? (val - c.min) / (c.max - c.min) : 0;
+      var w = track.offsetWidth - 18;
+      if (w < 0) w = 0;
+      knob.style.left = (pct * w) + 'px';
+      knob.style.bottom = '';
+      document.getElementById(dragId + 'Val').textContent = val;
+    }
+
+    function faderEnd() {
+      if (!dragId) return;
+      var c = FC[dragId];
+      var knob = document.getElementById(dragId + 'Knob');
+      var track = document.getElementById(dragId + 'Track');
+      if (!track || !knob) { dragId = null; return; }
+
+      var w = track.offsetWidth - 18;
+      var left = parseFloat(knob.style.left) || 0;
+      var pct = w > 0 ? left / w : 0;
+      var val = c.min + pct * (c.max - c.min);
+      if (c.step > 1) val = Math.round(val / c.step) * c.step;
+      else val = Math.round(val);
+      val = Math.max(c.min, Math.min(c.max, val));
+
+      if (dragId === 'agc') {
+        apiPost('/api/agc', {value: Math.max(1, val)});
+      } else {
+        apiPost(c.api, {value: val});
+      }
+      dragId = null;
+    }
+
+    function updateFaderOrientation() {
+      var ids = ['vol', 'sql', 'agc', 'avc'];
+      for (var i = 0; i < ids.length; i++) {
+        var id = ids[i];
+        var track = document.getElementById(id + 'Track');
+        if (track) track.classList.add('fader-horizontal');
+        var valEl = document.getElementById(id + 'Val');
+        var v = (valEl && valEl.textContent !== '--') ? parseInt(valEl.textContent, 10) : (lastStatus && lastStatus[id] !== undefined ? (id === 'agc' && agcAuto ? 0 : lastStatus[id]) : FC[id].min);
+        if (!isNaN(v)) setFaderPos(id, v);
+      }
+    }
+
+    function setupFaders() {
+      var ids = ['vol', 'sql', 'agc', 'avc'];
+      for (var i = 0; i < ids.length; i++) {
+        (function(id) {
+          var track = document.getElementById(id + 'Track');
+          var knob = document.getElementById(id + 'Knob');
+          if (!track || !knob) return;
+
+          var vis = knob.querySelector('.fader-knob-visual');
+          if (vis) {
+            vis.addEventListener('mousedown', function(e) { faderStart(id, e); });
+            vis.addEventListener('touchstart', function(e) { faderStart(id, e); }, {passive:false});
+          }
+          track.addEventListener('mousedown', function(e) {
+            if (e.target === vis) return;
+            faderStart(id, e);
+          });
+          track.addEventListener('touchstart', function(e) {
+            if (e.target === vis) return;
+            faderStart(id, e);
+          }, {passive:false});
+        })(ids[i]);
+      }
+
+      document.addEventListener('mousemove', faderMove);
+      document.addEventListener('touchmove', faderMove, {passive:false});
+      document.addEventListener('mouseup', faderEnd);
+      document.addEventListener('touchend', faderEnd);
+      updateFaderOrientation();
+    }
+
+    // ============================================
+    // BAND RENDERING
+    // ============================================
+    function loadOptions() {
+      fetch('/api/options').then(function(r) { return r.json(); })
+      .then(function(data) {
+        opts = data;
+        renderBands();
+      })
+      .catch(function(e) {
+        console.error('Options load failed:', e);
+        setTimeout(loadOptions, 3000);
+      });
+    }
+
+    function categorizeBand(b) {
+      var n = b.name.toUpperCase();
+      if (n === 'FM' || n === 'VHF' || n === 'ALL' || n.indexOf('MW') === 0) return 'gen';
+      if (n === 'CB' || b.mode === 1 || b.mode === 2) return 'ham';
+      return 'bc';
+    }
+
+    function renderBands() {
+      var ham = document.getElementById('hamBands');
+      var gen = document.getElementById('genBands');
+      var bc = document.getElementById('bcBands');
+      ham.innerHTML = ''; gen.innerHTML = ''; bc.innerHTML = '';
+
+      for (var i = 0; i < opts.bands.length; i++) {
+        var b = opts.bands[i];
+        var btn = document.createElement('button');
+        btn.className = 'btn btn-band';
+        btn.textContent = b.name;
+        btn.dataset.idx = b.idx;
+        btn.onclick = (function(idx) {
+          return function() { apiPost('/api/band', {index: idx}); };
+        })(b.idx);
+
+        var cat = categorizeBand(b);
+        if (cat === 'ham') ham.appendChild(btn);
+        else if (cat === 'gen') gen.appendChild(btn);
+        else bc.appendChild(btn);
+      }
+    }
+
+    // ============================================
+    // CONTROLS
+    // ============================================
+    function findBandForFreq(freq, isFm) {
+      if (!opts || !opts.bands) return -1;
+      if (isFm) return 0;  // FM band only (freq in 0.01 MHz)
+      var list = [];
+      for (var i = 0; i < opts.bands.length; i++) {
+        var b = opts.bands[i];
+        if (b.mode === 0) continue;  // FM uses 0.01 MHz; freq here is kHz — never match FM (e.g. 7000 kHz ≠ 70 MHz)
+        if (b.min <= freq && freq <= b.max) list.push({ idx: b.idx, name: b.name });
+      }
+      if (list.length === 0) return -1;
+      list.sort(function(a, b) { return (a.name.toUpperCase() === 'ALL') ? 1 : (b.name.toUpperCase() === 'ALL') ? -1 : 0; });
+      return list[0].idx;
+    }
+
+    function applyFreqInput() {
+      var inp = document.getElementById('freqInput');
+      var disp = document.getElementById('freqDisp');
+      var wrap = document.getElementById('freqWrap');
+      var raw = (inp.value || '').trim().replace(',', '.');
+      inp.style.display = 'none';
+      disp.style.display = '';
+      if (!raw) return;
+      var num = parseFloat(raw);
+      if (isNaN(num) || num <= 0) {
+        alert('Invalid frequency');
+        return;
+      }
+      // Integer >= 1000 (e.g. 9740, 14200) is always kHz. Only 64–108 with decimal or 2–3 digits is FM MHz.
+      var looksLikeKHz = (num === Math.round(num) && num >= 1000);
+      var isFm = !looksLikeKHz && (num >= 64 && num <= 108);
+      var freq;
+      if (isFm) {
+        freq = Math.round(num * 100);
+      } else {
+        if (num >= 150) freq = Math.round(num);
+        else freq = Math.round(num * 1000);
+      }
+      if (isFm) {
+        if (freq < 6400 || freq > 10800) { alert('FM frequency must be 64–108 MHz'); return; }
+      } else {
+        if (freq < 150 || freq > 30000) { alert('Frequency out of range (150–30000 kHz)'); return; }
+      }
+      var bandIdx = findBandForFreq(freq, isFm);
+      if (bandIdx < 0) {
+        alert('Frequency not in any available band');
+        return;
+      }
+      if (lastStatus && lastStatus.band !== bandIdx) {
+        apiPost('/api/band', { index: bandIdx });
+      }
+      apiPost('/api/tune', { freq: freq, bfo: lastStatus && lastStatus.bfo ? lastStatus.bfo : 0 });
+    }
+
+    function setupFreqEdit() {
+      var wrap = document.getElementById('freqWrap');
+      var disp = document.getElementById('freqDisp');
+      var inp = document.getElementById('freqInput');
+      wrap.onclick = function() {
+        if (inp.style.display === 'block') return;
+        var isFM = lastStatus && lastStatus.mode === 0;
+        var cur = isFM ? (lastStatus.freq / 100).toFixed(2) : (lastStatus ? lastStatus.freq : '');
+        inp.value = cur;
+        disp.style.display = 'none';
+        inp.style.display = 'block';
+        inp.focus();
+        inp.select();
+      };
+      inp.onblur = applyFreqInput;
+      inp.onkeydown = function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); applyFreqInput(); }
+        if (e.key === 'Escape') { inp.style.display = 'none'; disp.style.display = ''; inp.blur(); }
+      };
+    }
+
+    function updateSeekButtonLabels() {
+      var sd = document.getElementById('seekDn');
+      var su = document.getElementById('seekUp');
+      if (sd) sd.textContent = seekingDirection === -1 ? 'STOP' : '\u25C4\u25C4';
+      if (su) su.textContent = seekingDirection === 1 ? 'STOP' : '\u25B6\u25B6';
+    }
+
+    function setupControls() {
+      document.getElementById('tuneUp').onclick = function() { apiPost('/api/tune', {direction:1}); };
+      document.getElementById('tuneDn').onclick = function() { apiPost('/api/tune', {direction:-1}); };
+      document.getElementById('seekDn').onclick = function() {
+        if (seekingDirection === -1) {
+          seekingDirection = 0;
+          updateSeekButtonLabels();
+          apiPost('/api/seek', {stop: true});
+          return;
+        }
+        seekingDirection = -1;
+        updateSeekButtonLabels();
+        apiPost('/api/seek', {direction: -1}).then(function(r) {
+          if (!r || !r.ok) { seekingDirection = 0; updateSeekButtonLabels(); }
+        });
+      };
+      document.getElementById('seekUp').onclick = function() {
+        if (seekingDirection === 1) {
+          seekingDirection = 0;
+          updateSeekButtonLabels();
+          apiPost('/api/seek', {stop: true});
+          return;
+        }
+        seekingDirection = 1;
+        updateSeekButtonLabels();
+        apiPost('/api/seek', {direction: 1}).then(function(r) {
+          if (!r || !r.ok) { seekingDirection = 0; updateSeekButtonLabels(); }
+        });
+      };
+      updateSeekButtonLabels();
+
+      document.getElementById('fullScanBtn').onclick = function() {
+        if (scanInProgress) {
+          apiPost('/api/scan', { action: 'stop' });
+          scanInProgress = false;
+        } else {
+          apiPost('/api/scan', { action: 'start' });
+          scanInProgress = true;
+        }
+        this.textContent = scanInProgress ? 'STOP' : 'Full Scan';
+      };
+      document.getElementById('exitScanBtn').onclick = function() {
+        apiPost('/api/scan', { action: 'exit' });
+      };
+
+      document.getElementById('stepLeftInfo').onclick = function() { apiPost('/api/step', {direction:-1}); };
+      document.getElementById('stepRightInfo').onclick = function() { apiPost('/api/step', {direction:1}); };
+      document.getElementById('bwLeftInfo').onclick = function() { apiPost('/api/bandwidth', {direction:-1}); };
+      document.getElementById('bwRightInfo').onclick = function() { apiPost('/api/bandwidth', {direction:1}); };
+
+      document.getElementById('modeSelect').onchange = function() {
+        var v = parseInt(this.value, 10);
+        if (!isNaN(v)) apiPost('/api/mode', { mode: v });
+      };
+
+      document.getElementById('muteBtn').onclick = function() {
+        isMuted = !isMuted;
+        apiPost('/api/mute', {mute: isMuted});
+        this.classList.toggle('active', isMuted);
+      };
+
+      document.getElementById('agcAutoBtn').onclick = function() {
+        if (agcAuto) {
+          apiPost('/api/agc', {value: 1});
+        } else {
+          apiPost('/api/agc', {auto: true});
+        }
+      };
+
+      document.getElementById('rdsModeBtn').onclick = function() {
+        var next = (lastStatus && lastStatus.rdsModeIdx === 6) ? 0 : 6;
+        apiPost('/api/rds', { mode: next });
+      };
+
+      setupFreqEdit();
+    }
+
+    // ============================================
+    // ANIMATIONS
+    // ============================================
+    function animVU() {
+      rssiC += (rssiT - rssiC) * 0.48;
+      snrC += (snrT - snrC) * 0.48;
+
+      var rssiDeg = -60 + (rssiC / 60) * 120;
+      var snrDeg = -60 + (snrC / 40) * 120;
+
+      var rn = document.getElementById('rssiNdl');
+      var sn = document.getElementById('snrNdl');
+      if (rn) rn.style.setProperty('--rot', rssiDeg + 'deg');
+      if (sn) sn.style.setProperty('--rot', snrDeg + 'deg');
+
+      var rInt = Math.min(1, rssiC / 60);
+      var sInt = Math.min(1, snrC / 40);
+      var rl = document.getElementById('rssiLamp');
+      var sl = document.getElementById('snrLamp');
+      var lampOnThreshold = 0.06;
+      if (rl) {
+        if (rInt > lampOnThreshold) {
+          rl.classList.add('lit');
+          rl.style.removeProperty('box-shadow');
+        } else {
+          rl.classList.remove('lit');
+          rl.style.boxShadow = 'inset 0 0 6px rgba(0,0,0,0.8)';
+        }
+      }
+      if (sl) {
+        if (sInt > lampOnThreshold) {
+          sl.classList.add('lit');
+          sl.style.removeProperty('box-shadow');
+        } else {
+          sl.classList.remove('lit');
+          sl.style.boxShadow = 'inset 0 0 6px rgba(0,0,0,0.8)';
+        }
+      }
+
+      animId = requestAnimationFrame(animVU);
+    }
+
+    function drawSignal(ts) {
+      if (ts - lastSigDraw < 80) { sigId = requestAnimationFrame(drawSignal); return; }
+      lastSigDraw = ts;
+
+      var cv = document.getElementById('sigCanvas');
+      if (!cv || !canvasCtx) { sigId = requestAnimationFrame(drawSignal); return; }
+      var ctx = canvasCtx;
+      var w = cv.width, h = cv.height;
+      var hTop = Math.floor(h * 0.35);
+      var hBottom = h - hTop;
+
+      ctx.fillStyle = '#0a0806';
+      ctx.fillRect(0, 0, w, h);
+
+      // Grid background (both halves)
+      ctx.strokeStyle = '#1a1510';
+      ctx.lineWidth = 1;
+      for (var gx = 0; gx < w; gx += 24) { ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke(); }
+      for (var gy = 0; gy < h; gy += 18) { ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke(); }
+
+      var bandMin = 0, bandMax = 1, currentFreq = 0, isFm = false;
+      if (opts && opts.bands && lastStatus != null) {
+        var b = opts.bands[lastStatus.band];
+        if (b) {
+          bandMin = b.min;
+          bandMax = b.max;
+          currentFreq = lastStatus.freq;
+          isFm = lastStatus.mode === 0;
+        }
+      }
+      var span = bandMax - bandMin;
+      if (span <= 0) span = 1;
+
+      // ---------- Top half: band line with frequency labels and current-freq dot ----------
+      var lineY = Math.floor(hTop * 0.55);
+      var padX = 42;
+      var drawW = w - padX * 2;
+      if (drawW < 20) drawW = w - 20; padX = (w - drawW) / 2;
+
+      ctx.strokeStyle = '#3a3025';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(padX, lineY);
+      ctx.lineTo(w - padX, lineY);
+      ctx.stroke();
+
+      if (scanInProgress) {
+        var sweepPeriod = 2400;
+        var t = (Date.now() % sweepPeriod) / sweepPeriod;
+        var sweepX = padX + t * drawW;
+        ctx.strokeStyle = 'rgba(255, 107, 53, 0.7)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.moveTo(sweepX, Math.floor(hTop * 0.2));
+        ctx.lineTo(sweepX, lineY + 8);
+        ctx.stroke();
+        ctx.fillStyle = 'rgba(255, 107, 53, 0.15)';
+        ctx.fillRect(padX, Math.floor(hTop * 0.2), sweepX - padX, lineY - Math.floor(hTop * 0.2) + 8);
+      }
+
+      ctx.fillStyle = '#6b5a4a';
+      ctx.font = '11px Menlo, Monaco, Consolas, "Courier New", monospace';
+      ctx.textBaseline = 'top';
+      var numTicks = 5;
+      for (var t = 0; t < numTicks; t++) {
+        var frac = t / (numTicks - 1);
+        var freq = Math.round(bandMin + frac * span);
+        var x = padX + frac * drawW;
+        var label = isFm ? (freq / 100).toFixed(2) : freq.toString();
+        if (t === 0) ctx.textAlign = 'left';
+        else if (t === numTicks - 1) ctx.textAlign = 'right';
+        else ctx.textAlign = 'center';
+        ctx.fillText(label, x, lineY + 4);
+        if (t > 0 && t < numTicks - 1) {
+          ctx.beginPath();
+          ctx.moveTo(x, lineY);
+          ctx.lineTo(x, lineY + 4);
+          ctx.stroke();
+        }
+      }
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'alphabetic';
+      if (isFm) {
+        ctx.fillText(' MHz', w - padX - 28, lineY + 4);
+      } else {
+        ctx.fillText(' kHz', w - padX - 28, lineY + 4);
+      }
+
+      var dotX = padX + ((currentFreq - bandMin) / span) * drawW;
+      dotX = Math.max(padX, Math.min(w - padX, dotX));
+      ctx.fillStyle = '#ff6b35';
+      ctx.beginPath();
+      ctx.arc(dotX, lineY, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#c9a227';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Scan markers: only for the band that was scanned; freq scale is that band's (SW = kHz, FM = 0.01 MHz)
+      var scanMatchesBand = (lastStatus && scanBandIndex !== null && lastStatus.band === scanBandIndex);
+      if (scanData && scanData.points && scanData.points.length && scanMatchesBand) {
+        var pts = scanData.points;
+        var startFreq = scanData.startFreq;
+        var step = scanData.step;
+        var rssiSum = 0, rssiN = 0;
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
+          if (f >= bandMin && f <= bandMax) { rssiSum += pts[i].rssi; rssiN++; }
+        }
+        var rssiBaseline = rssiN > 0 ? rssiSum / rssiN : 0;
+        var maxLevel = 0;
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
+          if (f < bandMin || f > bandMax) continue;
+          var r = pts[i].rssi;
+          var s = pts[i].snr;
+          var above = (r > rssiBaseline) ? (r - rssiBaseline) : 0;
+          var level = (above > s) ? above : s;
+          if (level > maxLevel) maxLevel = level;
+        }
+        if (maxLevel <= 0) maxLevel = 1;
+        var barMaxH = Math.min(20, Math.floor(hTop * 0.35));
+        var markerFreqs = [];
+        ctx.fillStyle = '#4ade80';
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
+          if (f < bandMin || f > bandMax) continue;
+          var x = padX + ((f - bandMin) / span) * drawW;
+          if (x < padX || x > w - padX) continue;
+          var r = pts[i].rssi;
+          var s = pts[i].snr;
+          var above = (r > rssiBaseline) ? (r - rssiBaseline) : 0;
+          var level = (above > s) ? above : s;
+          var norm = level / maxLevel;
+          var barH = 2 + (norm * (barMaxH - 2));
+          if (barH > 2) {
+            ctx.fillRect(Math.floor(x) - 1, lineY - barH, 2, barH);
+            markerFreqs.push({ freq: f, x: x });
+          }
+        }
+        lastBandState = { bandMin: bandMin, span: span, drawW: drawW, padX: padX, w: w, isFm: isFm, markerFreqs: markerFreqs };
+      } else {
+        lastBandState = null;
+      }
+
+      // ---------- Bottom half: RSSI/SNR history, right-to-left (oldest left, newest right) ----------
+      var n = signalHistory.length;
+      if (n < 2) { sigId = requestAnimationFrame(drawSignal); return; }
+
+      var y0 = hTop;
+      var histH = hBottom - 4;
+      var rssiScale = 60;
+      var snrScale = 40;
+
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+
+      for (var pass = 0; pass < 2; pass++) {
+        if (pass === 0) {
+          ctx.strokeStyle = '#4ade80';
+        } else {
+          ctx.strokeStyle = '#ff6b35';
+        }
+        ctx.beginPath();
+        for (var i = 0; i < n; i++) {
+          var x = padX + (i / Math.max(1, n - 1)) * (drawW);
+          var val = pass === 0 ? signalHistory[i].rssi : signalHistory[i].snr;
+          var scale = pass === 0 ? rssiScale : snrScale;
+          var norm = Math.min(1, Math.max(0, val / scale));
+          var y = y0 + histH - 2 - norm * (histH - 4);
+          if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#2a2520';
+      ctx.font = '9px monospace';
+      ctx.fillText('RSSI', padX, y0 + 12);
+      ctx.fillStyle = '#3a3025';
+      ctx.fillText('SNR', padX, y0 + histH - 2);
+
+      sigId = requestAnimationFrame(drawSignal);
+    }
+
+    function getMarkerAtCanvasX(canvasX) {
+      if (!lastBandState || !lastBandState.markerFreqs || !lastBandState.markerFreqs.length) return null;
+      var hitPx = 6;
+      for (var i = 0; i < lastBandState.markerFreqs.length; i++) {
+        var m = lastBandState.markerFreqs[i];
+        if (Math.abs(canvasX - m.x) <= hitPx) return m.freq;
+      }
+      return null;
+    }
+
+    function setupCanvasEvents() {
+      var cv = document.getElementById('sigCanvas');
+      var tip = document.getElementById('scanMarkerTooltip');
+      if (!cv || !tip || cv._scanEvents) return;
+      cv._scanEvents = true;
+
+      function getCanvasX(e) {
+        var r = cv.getBoundingClientRect();
+        var x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+        var scale = cv.width / r.width;
+        return scale * x;
+      }
+
+      cv.addEventListener('mousemove', function(e) {
+        var canvasX = getCanvasX(e);
+        var freq = getMarkerAtCanvasX(canvasX);
+        if (freq != null) {
+          var isFm = lastBandState && lastBandState.isFm;
+          tip.textContent = isFm ? (freq / 100).toFixed(2) + ' MHz' : freq + ' kHz';
+          tip.classList.add('visible');
+          var sd = tip.parentElement ? tip.parentElement.getBoundingClientRect() : cv.getBoundingClientRect();
+          tip.style.left = (e.clientX - sd.left + 12) + 'px';
+          tip.style.top = (e.clientY - sd.top - 8) + 'px';
+        } else {
+          tip.classList.remove('visible');
+        }
+      });
+      cv.addEventListener('mouseleave', function() { tip.classList.remove('visible'); });
+
+      cv.addEventListener('click', function(e) {
+        var canvasX = getCanvasX(e);
+        var freq = getMarkerAtCanvasX(canvasX);
+        if (freq == null) return;
+        // Marker freq is in the scanned band's units (SW = kHz, FM = 0.01 MHz). Use scanBandIndex so we never switch to wrong band (e.g. 7000 kHz → FM).
+        var bandIdx = (scanBandIndex !== null && scanBandIndex !== undefined) ? scanBandIndex : (lastStatus && lastStatus.band);
+        if (bandIdx === undefined && opts && opts.bands) {
+          var isFmMarker = lastBandState && lastBandState.isFm;
+          bandIdx = findBandForFreq(freq, isFmMarker);
+          if (bandIdx < 0) bandIdx = undefined;
+        }
+        if (bandIdx !== undefined && lastStatus && bandIdx !== lastStatus.band) {
+          pendingTuneFreq = freq;
+          targetBand = bandIdx;
+          apiPost('/api/band', { index: bandIdx });
+        } else {
+          apiPost('/api/tune', { freq: freq });
+        }
+      });
+    }
+
+    function startAnim() {
+      var cv = document.getElementById('sigCanvas');
+      if (cv) {
+        cv.width = cv.offsetWidth;
+        cv.height = cv.offsetHeight;
+        canvasCtx = cv.getContext('2d');
+        setupCanvasEvents();
+      }
+      if (!animId) animId = requestAnimationFrame(animVU);
+      if (!sigId) sigId = requestAnimationFrame(drawSignal);
+    }
+
+    function stopAnim() {
+      if (animId) { cancelAnimationFrame(animId); animId = null; }
+      if (sigId) { cancelAnimationFrame(sigId); sigId = null; }
+    }
+
+    // ============================================
+    // INIT
+    // ============================================
+    function init() {
+      setupFaders();
+      setupControls();
+
+      window.addEventListener('resize', function() {
+        var cv = document.getElementById('sigCanvas');
+        if (cv) {
+          cv.width = cv.offsetWidth;
+          cv.height = cv.offsetHeight;
+          signalHistoryMaxLen = Math.max(100, cv.offsetWidth || 400);
+          while (signalHistory.length > signalHistoryMaxLen) signalHistory.shift();
+        }
+        updateFaderOrientation();
+      });
+
+      document.addEventListener('visibilitychange', function() {
+        if (document.hidden) stopAnim(); else startAnim();
+      });
+
+      startAnim();
+      loadOptions();
+      connectSSE();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+  </script>
+</body>
+</html>
