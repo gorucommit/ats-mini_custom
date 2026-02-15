@@ -54,7 +54,6 @@ This document describes the **ats-mini-signalscale** firmware, the **web control
 
 - **Network.cpp**
   - `#include "WebControl.h"`.
-  - Hardcoded WiFi for testing: `WIFI_TEST_SSID` / `WIFI_TEST_PASS`; `wifiMulti.addAP(WIFI_TEST_SSID, WIFI_TEST_PASS)` in `wifiConnect()` before loading prefs.
   - **Before** `server.onNotFound()`: `webControlInit(server)`.
 - **ats-mini.ino**
   - `#include "WebControl.h"`.

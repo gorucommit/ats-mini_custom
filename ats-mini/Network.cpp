@@ -25,9 +25,6 @@ WiFiMulti wifiMulti;
 static const char *apSSID    = RECEIVER_NAME;
 static const char *apPWD     = 0;       // No password
 
-// Hardcoded WiFi for testing (always tried when connecting to a network)
-#define WIFI_TEST_SSID "VM8081720"
-#define WIFI_TEST_PASS "bgg4dozbzz8TJsdw"
 static const int   apChannel = 10;      // WiFi channel number (1..13)
 static const bool  apHideMe  = false;   // TRUE: disable SSID broadcast
 static const int   apClients = 3;       // Maximum simultaneous connected clients
@@ -264,9 +261,6 @@ static bool wifiConnect()
 
   // Clean credentials
   wifiMulti.APlistClean();
-
-  // Always add hardcoded test network for easier testing after flash
-  wifiMulti.addAP(WIFI_TEST_SSID, WIFI_TEST_PASS);
 
   // Get the preferences
   prefs.begin("network", true, STORAGE_PARTITION);

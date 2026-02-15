@@ -18,6 +18,8 @@
 #include "Storage.h"
 #include "Utils.h"
 
+#include <freertos/FreeRTOS.h>
+#include <freertos/portmacro.h>
 #include <new>  // for std::nothrow
 
 // External functions defined in ats-mini.ino
@@ -86,30 +88,38 @@ struct WebCommand
 static volatile WebCommand cmdQueue[CMD_QUEUE_SIZE];
 static volatile uint8_t cmdQueueHead = 0;  // Write index (async task)
 static volatile uint8_t cmdQueueTail = 0;  // Read index (main loop)
+static portMUX_TYPE cmdQueueMux = portMUX_INITIALIZER_UNLOCKED;
 
 // Enqueue a command (called from async task). When full, drop oldest so latest intent is never lost.
 static bool cmdEnqueue(WebCmdType cmd, int16_t p1 = 0, int16_t p2 = 0)
 {
+  portENTER_CRITICAL(&cmdQueueMux);
   uint8_t nextHead = (cmdQueueHead + 1) % CMD_QUEUE_SIZE;
   if(nextHead == cmdQueueTail)
     cmdQueueTail = (cmdQueueTail + 1) % CMD_QUEUE_SIZE;  // Drop oldest
-  
+
   cmdQueue[cmdQueueHead].cmd = cmd;
   cmdQueue[cmdQueueHead].param1 = p1;
   cmdQueue[cmdQueueHead].param2 = p2;
   cmdQueueHead = nextHead;
+  portEXIT_CRITICAL(&cmdQueueMux);
   return true;
 }
 
 // Dequeue a command (called from main loop)
 static bool cmdDequeue(WebCommand &out)
 {
-  if(cmdQueueTail == cmdQueueHead) return false;  // Queue empty
-  
+  portENTER_CRITICAL(&cmdQueueMux);
+  if(cmdQueueTail == cmdQueueHead)
+  {
+    portEXIT_CRITICAL(&cmdQueueMux);
+    return false;  // Queue empty
+  }
   out.cmd = cmdQueue[cmdQueueTail].cmd;
   out.param1 = cmdQueue[cmdQueueTail].param1;
   out.param2 = cmdQueue[cmdQueueTail].param2;
   cmdQueueTail = (cmdQueueTail + 1) % CMD_QUEUE_SIZE;
+  portEXIT_CRITICAL(&cmdQueueMux);
   return true;
 }
 
