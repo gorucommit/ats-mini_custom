@@ -886,10 +886,10 @@
     var sigId = null;
     var lastSigDraw = 0;
     var canvasCtx = null;
-    // Signal history: [{rssi, snr, ts}, ...], newest at end; max 30 seconds
+    // Signal history: [{rssi, snr, ts}, ...], newest at end; max 1 minute
     var signalHistory = [];
     var signalHistoryMaxLen = 400;
-    var SIGNAL_HISTORY_MS = 30000;
+    var SIGNAL_HISTORY_MS = 60000;
     var seekingDirection = 0;  // -1 = seeking down, 0 = none, 1 = seeking up
     var scanInProgress = false;
     var scanData = null;  // { startFreq, step, count, points: [{rssi,snr},...] } from /api/scan
@@ -1078,7 +1078,7 @@
       if (fullBtn) fullBtn.textContent = scanInProgress ? 'STOP' : 'Full Scan';
       if (exitBtn) exitBtn.style.display = s.inScanMode ? '' : 'none';
 
-      // Append to signal history (max 30 sec); trim by time so it scrolls off
+      // Append to signal history (max 1 min); trim by time so it scrolls off
       var cv = document.getElementById('sigCanvas');
       if (cv && cv.offsetWidth) signalHistoryMaxLen = Math.max(100, cv.offsetWidth);
       var now = Date.now();
