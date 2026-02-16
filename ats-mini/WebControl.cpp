@@ -7,9 +7,10 @@
  * The SI4735 radio chip communicates via I2C which is NOT thread-safe.
  * Therefore, all radio operations (rx.*) MUST happen in the main loop() task.
  * 
- * The API handlers only set pending commands in a queue. The webControlTick()
+ * The API handlers only set pending commands in a queue. The webControlProcessCommands()
  * function (called from loop()) processes the queue and performs the actual
- * radio operations safely.
+ * radio operations safely. webControlBroadcastStatus() handles SSE updates separately
+ * to avoid delaying command processing.
  */
 
 #include "WebControl.h"
@@ -77,6 +78,7 @@ enum WebCmdType : uint8_t
 };
 
 #define CMD_QUEUE_SIZE 24
+#define BATCH_WINDOW_MS 75  // Time window for batching similar commands (75ms)
 
 struct WebCommand
 {
@@ -90,17 +92,113 @@ static volatile uint8_t cmdQueueHead = 0;  // Write index (async task)
 static volatile uint8_t cmdQueueTail = 0;  // Read index (main loop)
 static portMUX_TYPE cmdQueueMux = portMUX_INITIALIZER_UNLOCKED;
 
+// Batching tracking: last enqueue time and queue index per batchable command type
+// Indexed by (cmdType - WEB_CMD_VOLUME) for batchable commands only
+static volatile uint32_t lastBatchTime[7];  // Last enqueue time per batchable cmd type
+static volatile uint8_t lastBatchIndex[7];  // Queue index of last batched cmd (0xFF = not in queue)
+
+// Check if command type is batchable (replace old with new within time window)
+static bool isBatchable(WebCmdType cmd)
+{
+  return (cmd == WEB_CMD_VOLUME || cmd == WEB_CMD_SQUELCH || cmd == WEB_CMD_AGC ||
+          cmd == WEB_CMD_AVC || cmd == WEB_CMD_TUNE_FREQ || cmd == WEB_CMD_MUTE ||
+          cmd == WEB_CMD_MODE_SET);
+}
+
+// Get batch tracking index for a batchable command type
+static uint8_t getBatchIndex(WebCmdType cmd)
+{
+  switch(cmd)
+  {
+    case WEB_CMD_VOLUME: return 0;
+    case WEB_CMD_SQUELCH: return 1;
+    case WEB_CMD_AGC: return 2;
+    case WEB_CMD_AVC: return 3;
+    case WEB_CMD_TUNE_FREQ: return 4;
+    case WEB_CMD_MUTE: return 5;
+    case WEB_CMD_MODE_SET: return 6;
+    default: return 0xFF;  // Invalid
+  }
+}
+
+// Check if a queue index is still valid (not yet processed)
+static bool isIndexInQueue(uint8_t idx)
+{
+  // Handle circular buffer wrapping
+  if(cmdQueueTail <= cmdQueueHead)
+  {
+    // Normal case: tail <= head
+    return (idx >= cmdQueueTail && idx < cmdQueueHead);
+  }
+  else
+  {
+    // Wrapped case: head < tail
+    return (idx >= cmdQueueTail || idx < cmdQueueHead);
+  }
+}
+
 // Enqueue a command (called from async task). When full, drop oldest so latest intent is never lost.
+// Batches similar commands: if same batchable command type enqueued within BATCH_WINDOW_MS,
+// replaces the previous command's params instead of adding new entry.
 static bool cmdEnqueue(WebCmdType cmd, int16_t p1 = 0, int16_t p2 = 0)
 {
   portENTER_CRITICAL(&cmdQueueMux);
+  
+  uint32_t now = millis();
+  
+  // Check if this command is batchable and if we should batch it
+  if(isBatchable(cmd))
+  {
+    uint8_t batchIdx = getBatchIndex(cmd);
+    if(batchIdx != 0xFF)
+    {
+      uint32_t lastTime = lastBatchTime[batchIdx];
+      uint8_t lastIdx = lastBatchIndex[batchIdx];
+      
+      // If same command type was enqueued within window and still in queue, replace it
+      if((now - lastTime) < BATCH_WINDOW_MS && lastIdx != 0xFF && isIndexInQueue(lastIdx))
+      {
+        // Replace params at the existing queue position
+        cmdQueue[lastIdx].param1 = p1;
+        cmdQueue[lastIdx].param2 = p2;
+        // Update time but keep same index
+        lastBatchTime[batchIdx] = now;
+        portEXIT_CRITICAL(&cmdQueueMux);
+        return true;
+      }
+      // Otherwise, enqueue normally and update tracking
+    }
+  }
+  
+  // Normal enqueue path (non-batchable or no recent duplicate found)
   uint8_t nextHead = (cmdQueueHead + 1) % CMD_QUEUE_SIZE;
   if(nextHead == cmdQueueTail)
+  {
+    // Drop oldest - invalidate batch tracking if it pointed to the dropped index
+    uint8_t droppedIdx = cmdQueueTail;
+    for(int i = 0; i < 7; i++)
+    {
+      if(lastBatchIndex[i] == droppedIdx)
+        lastBatchIndex[i] = 0xFF;  // Invalidate
+    }
     cmdQueueTail = (cmdQueueTail + 1) % CMD_QUEUE_SIZE;  // Drop oldest
+  }
 
   cmdQueue[cmdQueueHead].cmd = cmd;
   cmdQueue[cmdQueueHead].param1 = p1;
   cmdQueue[cmdQueueHead].param2 = p2;
+  
+  // Update batch tracking if batchable
+  if(isBatchable(cmd))
+  {
+    uint8_t batchIdx = getBatchIndex(cmd);
+    if(batchIdx != 0xFF)
+    {
+      lastBatchTime[batchIdx] = now;
+      lastBatchIndex[batchIdx] = cmdQueueHead;
+    }
+  }
+  
   cmdQueueHead = nextHead;
   portEXIT_CRITICAL(&cmdQueueMux);
   return true;
@@ -118,6 +216,17 @@ static bool cmdDequeue(WebCommand &out)
   out.cmd = cmdQueue[cmdQueueTail].cmd;
   out.param1 = cmdQueue[cmdQueueTail].param1;
   out.param2 = cmdQueue[cmdQueueTail].param2;
+  
+  // Invalidate batch tracking if this was a tracked batchable command
+  if(isBatchable(out.cmd))
+  {
+    uint8_t batchIdx = getBatchIndex(out.cmd);
+    if(batchIdx != 0xFF && lastBatchIndex[batchIdx] == cmdQueueTail)
+    {
+      lastBatchIndex[batchIdx] = 0xFF;  // Mark as no longer in queue
+    }
+  }
+  
   cmdQueueTail = (cmdQueueTail + 1) % CMD_QUEUE_SIZE;
   portEXIT_CRITICAL(&cmdQueueMux);
   return true;
@@ -309,6 +418,13 @@ static String buildOptionsJSON()
   }
   json += "],";
   
+  // Band map (broadcast/amateur segments in kHz; must match Draw.cpp getBandMapType for signal scale)
+  json += "\"bandMap\":{\"broadcast\":[";
+  json += "[520,1602],[2300,2500],[3200,3400],[3900,4000],[4750,5060],[5800,6325],[7200,7450],[9400,9900],[11600,12100],[13570,13870],[15100,15800]";
+  json += "],\"amateur\":[";
+  json += "[1810,2000],[3500,3800],[5250,5450],[7000,7200],[10100,10150],[14000,14530]";
+  json += "]},";
+
   // Modes array
   json += "\"modes\":[";
   int totalModes = getTotalModes();
@@ -1123,21 +1239,24 @@ static void updatePrevState()
 // Public Functions
 //=============================================================================
 
-void webControlTick()
+void webControlProcessCommands()
 {
-  // Process pending commands (safe - runs in main loop)
+  // Process ALL pending commands immediately (safe - runs in main loop)
   WebCommand cmd;
   while(cmdDequeue(cmd))
   {
     processCommand(cmd);
   }
   
-  // Update cached stereo state (safe I2C call from main loop)
+  // Update cached stereo state (needed for status JSON, safe I2C call from main loop)
   if(currentMode == FM)
     cachedStereo = rx.getCurrentPilot();
   else
     cachedStereo = false;
-  
+}
+
+void webControlBroadcastStatus()
+{
   // Throttle SSE broadcasts
   uint32_t now = millis();
   if((now - lastBroadcast) < BROADCAST_INTERVAL_MS) return;
@@ -1154,6 +1273,14 @@ void webControlTick()
   lastBroadcast = now;
 }
 
+void webControlTick()
+{
+  // Combined function for backward compatibility
+  // Processes commands immediately, then broadcasts status if throttled time passed
+  webControlProcessCommands();
+  webControlBroadcastStatus();
+}
+
 void webControlNotify()
 {
   statusDirty = true;
@@ -1166,6 +1293,13 @@ uint8_t webControlClientCount()
 
 void webControlInit(AsyncWebServer &server)
 {
+  // Initialize batch tracking arrays
+  for(int i = 0; i < 7; i++)
+  {
+    lastBatchTime[i] = 0;
+    lastBatchIndex[i] = 0xFF;  // 0xFF = not in queue
+  }
+  
   // SSE endpoint
   events.onConnect([](AsyncEventSourceClient *client)
   {

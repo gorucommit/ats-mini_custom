@@ -41,9 +41,25 @@
 void webControlInit(AsyncWebServer &server);
 
 /**
- * Process SSE broadcasts. Call this from the main loop.
- * Handles throttled broadcasting of status changes to connected clients.
- * Should be called frequently (every loop iteration is fine).
+ * Process pending commands from the queue immediately.
+ * Call this from the main loop to process web commands.
+ * Safe to call multiple times per loop iteration.
+ * Updates cached stereo state for status JSON.
+ */
+void webControlProcessCommands();
+
+/**
+ * Broadcast status updates via SSE (throttled).
+ * Call this from the main loop to send status updates to connected clients.
+ * Automatically throttled to BROADCAST_INTERVAL_MS (50ms = 20 updates/sec).
+ * Only broadcasts if state has changed and clients are connected.
+ */
+void webControlBroadcastStatus();
+
+/**
+ * Combined function for backward compatibility.
+ * Calls webControlProcessCommands() then webControlBroadcastStatus().
+ * For optimal performance, call the functions separately.
  */
 void webControlTick();
 
