@@ -248,6 +248,17 @@ static uint32_t lastBroadcast = 0;
 // Cached stereo state (updated in main loop, safe to read from async task)
 static volatile bool cachedStereo = false;
 
+// Strategy 2: Cached function call results (updated in updatePrevState)
+static volatile uint8_t cachedMuteState = 0;
+static volatile bool cachedScanHasData = false;
+static volatile uint8_t cachedRdsModeIdx = 0;
+static volatile uint8_t cachedStepIdx = 0;
+static volatile uint8_t cachedBwIdx = 0;
+
+// Strategy 1: Cached JSON string
+static char cachedJson[JSON_STATUS_SIZE];
+static bool jsonCacheValid = false;
+
 // Previous state for change detection
 static uint16_t prevFreq = 0;
 static int16_t prevBFO = 0;
@@ -301,7 +312,10 @@ static void jsonEscapeString(char *dest, const char *src, size_t maxLen)
 
 static String buildStatusJSON()
 {
-  char json[JSON_STATUS_SIZE];
+  // Strategy 4: Pre-allocate String capacity to avoid reallocations
+  String json;
+  json.reserve(JSON_STATUS_SIZE);
+  
   char stationBuf[64] = "";
   char radioTextBuf[128] = "";
   char bandNameBuf[16] = "";
@@ -325,68 +339,67 @@ static String buildStatusJSON()
   // AVC value (not available in FM)
   int8_t avcVal = currentMode == FM ? 0 : isSSB() ? SsbAvcIdx : AmAvcIdx;
   
-  snprintf(json, sizeof(json),
-    "{"
-    "\"freq\":%u,"
-    "\"bfo\":%d,"
-    "\"band\":%d,"
-    "\"bandName\":\"%s\","
-    "\"mode\":%d,"
-    "\"modeName\":\"%s\","
-    "\"rssi\":%u,"
-    "\"snr\":%u,"
-    "\"vol\":%u,"
-    "\"sql\":%u,"
-    "\"agc\":%d,"
-    "\"agcMax\":%u,"
-    "\"agcAuto\":%s,"
-    "\"avc\":%d,"
-    "\"avcAvail\":%s,"
-    "\"stepIdx\":%d,"
-    "\"stepDesc\":\"%s\","
-    "\"bwIdx\":%d,"
-    "\"bwDesc\":\"%s\","
-    "\"stereo\":%s,"
-    "\"station\":\"%s\","
-    "\"radioText\":\"%s\","
-    "\"inScanMode\":%s,"
-    "\"scanHasData\":%s,"
-    "\"mute\":%s,"
-    "\"seeking\":%s,"
-    "\"seekDirection\":%d,"
-    "\"rdsModeIdx\":%d"
-    "}",
-    currentFrequency,
-    currentBFO,
-    bandIdx,
-    bandNameBuf,
-    currentMode,
-    bandModeDesc[currentMode],
-    rssi,
-    snr,
-    volume,
-    currentSquelch,
-    agcIdx,
-    agcMax,
-    agcIdx == 0 ? "true" : "false",
-    avcVal,
-    currentMode != FM ? "true" : "false",
-    band->currentStepIdx,
-    stepDescBuf,
-    band->bandwidthIdx,
-    bwDescBuf,
-    cachedStereo ? "true" : "false",
-    stationBuf,
-    radioTextBuf,
-    currentCmd == CMD_SCAN ? "true" : "false",
-    scanHasData() ? "true" : "false",
-    muteOn(MUTE_MAIN) ? "true" : "false",
-    currentCmd == CMD_SEEK ? "true" : "false",
-    (int)webSeekDirection,
-    (int)getRDSModeIdx()
-  );
+  // Strategy 4: Build JSON using direct concatenation (faster than snprintf)
+  // Strategy 2: Use cached function results instead of calling functions
+  json = "{\"freq\":";
+  json += currentFrequency;
+  json += ",\"bfo\":";
+  json += currentBFO;
+  json += ",\"band\":";
+  json += bandIdx;
+  json += ",\"bandName\":\"";
+  json += bandNameBuf;
+  json += "\",\"mode\":";
+  json += currentMode;
+  json += ",\"modeName\":\"";
+  json += bandModeDesc[currentMode];
+  json += "\",\"rssi\":";
+  json += rssi;
+  json += ",\"snr\":";
+  json += snr;
+  json += ",\"vol\":";
+  json += volume;
+  json += ",\"sql\":";
+  json += currentSquelch;
+  json += ",\"agc\":";
+  json += agcIdx;
+  json += ",\"agcMax\":";
+  json += agcMax;
+  json += ",\"agcAuto\":";
+  json += (agcIdx == 0 ? "true" : "false");
+  json += ",\"avc\":";
+  json += avcVal;
+  json += ",\"avcAvail\":";
+  json += (currentMode != FM ? "true" : "false");
+  json += ",\"stepIdx\":";
+  json += cachedStepIdx;  // Strategy 2: Use cached value
+  json += ",\"stepDesc\":\"";
+  json += stepDescBuf;
+  json += "\",\"bwIdx\":";
+  json += cachedBwIdx;  // Strategy 2: Use cached value
+  json += ",\"bwDesc\":\"";
+  json += bwDescBuf;
+  json += "\",\"stereo\":";
+  json += (cachedStereo ? "true" : "false");
+  json += ",\"station\":\"";
+  json += stationBuf;
+  json += "\",\"radioText\":\"";
+  json += radioTextBuf;
+  json += "\",\"inScanMode\":";
+  json += (currentCmd == CMD_SCAN ? "true" : "false");
+  json += ",\"scanHasData\":";
+  json += (cachedScanHasData ? "true" : "false");  // Strategy 2: Use cached value
+  json += ",\"mute\":";
+  json += (cachedMuteState ? "true" : "false");  // Strategy 2: Use cached value
+  json += ",\"seeking\":";
+  json += (currentCmd == CMD_SEEK ? "true" : "false");
+  json += ",\"seekDirection\":";
+  json += (int)webSeekDirection;
+  json += ",\"rdsModeIdx\":";
+  json += cachedRdsModeIdx;  // Strategy 2: Use cached value
+  json += "}";
   
-  return String(json);
+  return json;
 }
 
 static String buildOptionsJSON()
@@ -1195,6 +1208,7 @@ static void handleMemoryClear(AsyncWebServerRequest *request)
 
 static bool hasStateChanged()
 {
+  // Strategy 2: Use cached function results instead of calling functions
   return statusDirty ||
          prevFreq != currentFrequency ||
          prevBFO != currentBFO ||
@@ -1205,13 +1219,13 @@ static bool hasStateChanged()
          prevAgc != agcIdx ||
          prevBand != bandIdx ||
          prevMode != currentMode ||
-         prevStepIdx != bands[bandIdx].currentStepIdx ||
-         prevBwIdx != bands[bandIdx].bandwidthIdx ||
+         prevStepIdx != cachedStepIdx ||
+         prevBwIdx != cachedBwIdx ||
          prevInScanMode != (currentCmd == CMD_SCAN) ||
-         prevScanHasData != scanHasData() ||
-         prevMute != muteOn(MUTE_MAIN) ||
+         prevScanHasData != cachedScanHasData ||
+         prevMute != cachedMuteState ||
          prevSeeking != (currentCmd == CMD_SEEK) ||
-         prevRdsModeIdx != (int)getRDSModeIdx();
+         prevRdsModeIdx != cachedRdsModeIdx;
 }
 
 static void updatePrevState()
@@ -1225,14 +1239,26 @@ static void updatePrevState()
   prevAgc = agcIdx;
   prevBand = bandIdx;
   prevMode = currentMode;
-  prevStepIdx = bands[bandIdx].currentStepIdx;
-  prevBwIdx = bands[bandIdx].bandwidthIdx;
+  
+  // Strategy 2: Update cached function results
+  cachedStepIdx = bands[bandIdx].currentStepIdx;
+  cachedBwIdx = bands[bandIdx].bandwidthIdx;
+  cachedScanHasData = scanHasData();
+  cachedMuteState = muteOn(MUTE_MAIN);
+  cachedRdsModeIdx = getRDSModeIdx();
+  
+  prevStepIdx = cachedStepIdx;
+  prevBwIdx = cachedBwIdx;
   prevInScanMode = (currentCmd == CMD_SCAN);
-  prevScanHasData = scanHasData();
-  prevMute = muteOn(MUTE_MAIN);
+  prevScanHasData = cachedScanHasData;
+  prevMute = cachedMuteState;
   prevSeeking = (currentCmd == CMD_SEEK);
-  prevRdsModeIdx = (int)getRDSModeIdx();
+  prevRdsModeIdx = cachedRdsModeIdx;
+  
   statusDirty = false;
+  
+  // Strategy 1: Invalidate JSON cache when state changes
+  jsonCacheValid = false;
 }
 
 //=============================================================================
@@ -1261,14 +1287,37 @@ void webControlBroadcastStatus()
   uint32_t now = millis();
   if((now - lastBroadcast) < BROADCAST_INTERVAL_MS) return;
   
-  if(!hasStateChanged()) return;
+  // Strategy 1: Check if state changed (uses cached values - Strategy 2)
+  if(!hasStateChanged()) {
+    // State unchanged - use cached JSON if available and clients connected
+    if(jsonCacheValid && events.count() > 0) {
+      events.send(cachedJson, "status", millis());
+      lastBroadcast = now;
+      return;
+    }
+    // No cache or no clients - nothing to do
+    return;
+  }
   
-  if(events.count() > 0)
-  {
-    String json = buildStatusJSON();
+  // State changed - rebuild JSON
+  if(events.count() > 0) {
+    String json = buildStatusJSON();  // Uses optimized building (Strategy 4) and cached values (Strategy 2)
+    
+    // Strategy 1: Cache the JSON string
+    size_t jsonLen = json.length();
+    if(jsonLen < JSON_STATUS_SIZE) {
+      strncpy(cachedJson, json.c_str(), JSON_STATUS_SIZE - 1);
+      cachedJson[JSON_STATUS_SIZE - 1] = '\0';
+      jsonCacheValid = true;
+    } else {
+      // JSON too large - can't cache (shouldn't happen)
+      jsonCacheValid = false;
+    }
+    
     events.send(json.c_str(), "status", millis());
   }
   
+  // Update previous state (updates cached function results - Strategy 2, invalidates JSON cache - Strategy 1)
   updatePrevState();
   lastBroadcast = now;
 }
@@ -1300,6 +1349,17 @@ void webControlInit(AsyncWebServer &server)
     lastBatchIndex[i] = 0xFF;  // 0xFF = not in queue
   }
   
+  // Strategy 2: Initialize cached function results
+  cachedMuteState = muteOn(MUTE_MAIN);
+  cachedScanHasData = scanHasData();
+  cachedRdsModeIdx = getRDSModeIdx();
+  cachedStepIdx = bands[bandIdx].currentStepIdx;
+  cachedBwIdx = bands[bandIdx].bandwidthIdx;
+  
+  // Strategy 1: Initialize JSON cache as invalid (will be built on first broadcast)
+  jsonCacheValid = false;
+  cachedJson[0] = '\0';
+  
   // SSE endpoint
   events.onConnect([](AsyncEventSourceClient *client)
   {
@@ -1309,8 +1369,21 @@ void webControlInit(AsyncWebServer &server)
       return;
     }
     
-    // Send current state on connect (reads cached globals, no I2C)
-    client->send(buildStatusJSON().c_str(), "status", millis());
+    // Send current state on connect
+    // Strategy 1: Use cached JSON if available, otherwise build fresh
+    if(jsonCacheValid) {
+      client->send(cachedJson, "status", millis());
+    } else {
+      String json = buildStatusJSON();
+      client->send(json.c_str(), "status", millis());
+      // Cache it for next time
+      size_t jsonLen = json.length();
+      if(jsonLen < JSON_STATUS_SIZE) {
+        strncpy(cachedJson, json.c_str(), JSON_STATUS_SIZE - 1);
+        cachedJson[JSON_STATUS_SIZE - 1] = '\0';
+        jsonCacheValid = true;
+      }
+    }
   });
   server.addHandler(&events);
   
