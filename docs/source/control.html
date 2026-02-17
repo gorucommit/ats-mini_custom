@@ -892,6 +892,8 @@
     var signalHistoryMaxLen = 400;
     var SIGNAL_HISTORY_MS = 60000;
     var seekingDirection = 0;  // -1 = seeking down, 0 = none, 1 = seeking up
+    var prevSeeking = false;  // Track previous seeking state to detect stop
+    var lastSeekStop = null;  // { freq, band } when seeking last stopped; cleared only on band change or page refresh
     var scanInProgress = false;
     var scanData = null;  // { startFreq, step, count, points: [{rssi,snr},...] } from /api/scan
     var scanBandIndex = null;  // band index the scan was taken on (avoids drawing HF kHz on FM scale)
@@ -1060,8 +1062,20 @@
       for (var i = 0; i < btns.length; i++) {
         btns[i].classList.toggle('active', parseInt(btns[i].dataset.idx) === s.band);
       }
-      if (s.seeking) seekingDirection = (s.seekDirection > 0) ? 1 : (s.seekDirection < 0) ? -1 : (seekingDirection || 1);
-      else seekingDirection = 0;
+      // Track seeking state transition; clear seek marker when band changes
+      if (lastSeekStop !== null && s.band !== undefined && lastSeekStop.band !== s.band) {
+        lastSeekStop = null;
+      }
+      if (s.seeking) {
+        seekingDirection = (s.seekDirection > 0) ? 1 : (s.seekDirection < 0) ? -1 : (seekingDirection || 1);
+        prevSeeking = true;
+      } else {
+        if (prevSeeking && s.band !== undefined) {
+          lastSeekStop = { freq: s.freq, band: s.band };
+        }
+        seekingDirection = 0;
+        prevSeeking = false;
+      }
       updateSeekButtonLabels();
       /* Only show sweep/STOP when scan is actually running; once scanHasData, we're in "results" mode */
       scanInProgress = !!s.inScanMode && !s.scanHasData;
@@ -1647,23 +1661,27 @@
         lastBandState = null;
       }
 
-      // Seek markers: draw bar at current frequency when seeking (same logic as scan markers)
-      if (seekingDirection !== 0 && lastStatus && currentFreq >= bandMin && currentFreq <= bandMax) {
-        var seekX = padX + ((currentFreq - bandMin) / span) * drawW;
-        seekX = Math.max(padX, Math.min(w - padX, seekX));
-        if (seekX >= padX && seekX <= w - padX) {
-          // Use current RSSI/SNR for seek marker height (similar to scan marker logic)
-          var seekRssi = lastStatus.rssi || 0;
-          var seekSnr = lastStatus.snr || 0;
-          // Normalize to 0-1 range (RSSI max ~60, SNR max ~40)
-          var seekRssiNorm = Math.min(1, seekRssi / 60);
-          var seekSnrNorm = Math.min(1, seekSnr / 40);
-          var seekLevel = Math.max(seekRssiNorm, seekSnrNorm);
-          var barMaxH = Math.min(20, Math.floor(hTop * 0.35));
-          var seekBarH = 2 + (seekLevel * (barMaxH - 2));
-          if (seekBarH > 2) {
-            ctx.fillStyle = '#ff6b35'; // Orange color for seek marker
-            ctx.fillRect(Math.floor(seekX) - 1, lineY - seekBarH, 2, seekBarH);
+      // Seek marker: persistent at last seek-stop frequency; only show if no scan markers on this band
+      var hasScanMarkersOnBand = scanData && scanData.points && scanData.points.length && scanMatchesBand;
+      var showSeekMarker = lastSeekStop !== null && lastSeekStop.band === (lastStatus && lastStatus.band) && !hasScanMarkersOnBand;
+      if (showSeekMarker && lastStatus && opts && opts.bands && lastSeekStop.band < opts.bands.length) {
+        var seekFreq = lastSeekStop.freq;
+        var b = opts.bands[lastSeekStop.band];
+        if (b && seekFreq >= bandMin && seekFreq <= bandMax) {
+          var seekX = padX + ((seekFreq - bandMin) / span) * drawW;
+          seekX = Math.max(padX, Math.min(w - padX, seekX));
+          if (seekX >= padX && seekX <= w - padX) {
+            var seekRssi = lastStatus.rssi || 0;
+            var seekSnr = lastStatus.snr || 0;
+            var seekRssiNorm = Math.min(1, seekRssi / 60);
+            var seekSnrNorm = Math.min(1, seekSnr / 40);
+            var seekLevel = Math.max(seekRssiNorm, seekSnrNorm);
+            var barMaxH = Math.min(20, Math.floor(hTop * 0.35));
+            var seekBarH = 2 + (seekLevel * (barMaxH - 2));
+            if (seekBarH > 2) {
+              ctx.fillStyle = '#ff6b35';
+              ctx.fillRect(Math.floor(seekX) - 1, lineY - seekBarH, 2, seekBarH);
+            }
           }
         }
       }
