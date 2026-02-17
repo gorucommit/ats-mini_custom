@@ -34,7 +34,7 @@ extern bool tuneToMemory(const Memory *memory);
 #if __has_include("control_html.h")
 #include "control_html.h"
 #define HAS_EMBEDDED_HTML 1
-#define CONTROL_PAGE_GZ_MAX 13000
+#define CONTROL_PAGE_GZ_MAX 13300
 // RAM copy so response is sent from RAM (avoids PROGMEM async read issues)
 static uint8_t s_controlPageGz[CONTROL_PAGE_GZ_MAX];
 static size_t s_controlPageGzLen = 0;
