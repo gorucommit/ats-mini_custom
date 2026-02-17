@@ -885,6 +885,18 @@ static void handleTune(AsyncWebServerRequest *request, const char *body)
   if(jsonGetInt(body, "freq", freq))
   {
     jsonGetInt(body, "bfo", bfo);
+
+    // Validate frequency bounds (100 kHz to 30 MHz in kHz)
+    if(freq < 100 || freq > 30000) {
+      sendError(request, 400, "Frequency out of range (100-30000 kHz)");
+      return;
+    }
+    // Validate BFO bounds (matches MAX_BFO in Common.h)
+    if(bfo < -MAX_BFO || bfo > MAX_BFO) {
+      sendError(request, 400, "BFO out of range (-14000 to 14000)");
+      return;
+    }
+
     if(cmdEnqueue(WEB_CMD_TUNE_FREQ, (int16_t)freq, (int16_t)bfo))
       sendOK(request);
     else
