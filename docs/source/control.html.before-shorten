@@ -280,9 +280,8 @@
       font-size: 0.8em; color: #6b5a4a; text-align: center;
       overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     }
-    .rds-toggle-wrap { flex-shrink: 0; display: flex; }
+    .rds-toggle-wrap { flex-shrink: 0; display: none; }
     .rds-toggle-wrap .fader-toggle { margin-top: 0; font-size: 0.5em; padding: 4px 6px; }
-    .rds-toggle-wrap.disabled .fader-toggle { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
     .mascot-wrap {
       display: flex; justify-content: center; align-items: center;
       padding: 8px 0; flex-shrink: 0;
@@ -310,7 +309,8 @@
     .signal-display-actions .bw-label {
       font-size: 0.7em; color: #c9a227;
     }
-    .signal-display-actions .btn-scan {
+    .signal-display-actions .btn-scan,
+    .signal-display-actions .btn-scan-exit {
       margin: 0; padding: 3px 6px;
       font-size: 0.7em; font-family: var(--fm);
       background: linear-gradient(180deg, #2a2a2a 0%, #1a1a1a 100%);
@@ -319,8 +319,12 @@
       display: inline-flex; align-items: center; justify-content: center;
       transition: all 0.15s ease;
     }
-    .signal-display-actions .btn-scan:hover {
+    .signal-display-actions .btn-scan:hover,
+    .signal-display-actions .btn-scan-exit:hover {
       border-color: #6a6a6a; color: #8b7355;
+    }
+    .signal-display-actions .btn-scan-exit {
+      color: #8b7355;
     }
     .signal-display { position: relative; }
     #sigCanvas {
@@ -621,7 +625,7 @@
         right: 6px;
       }
       .signal-display-actions .bw-label { font-size: 0.65em; }
-      .signal-display-actions .btn-scan { font-size: 0.65em; padding: 3px 5px; }
+      .signal-display-actions .btn-scan, .signal-display-actions .btn-scan-exit { font-size: 0.65em; padding: 3px 5px; }
       #sigCanvas { margin-top: 18px; height: 140px; min-height: 140px; }
       .control-row {
         flex-wrap: wrap;
@@ -649,7 +653,7 @@
       .frequency, .freq-edit-input { font-size: 1.65em; }
       .control-row { gap: 6px; padding: 6px; }
       .btn-large { font-size: 1em; padding: 10px 14px; }
-      .signal-display-actions .btn-scan { font-size: 0.6em; padding: 2px 4px; }
+      .signal-display-actions .btn-scan, .signal-display-actions .btn-scan-exit { font-size: 0.6em; padding: 2px 4px; }
     }
   </style>
 </head>
@@ -748,6 +752,7 @@
           <div class="signal-display-actions">
             <span class="bw-label">BW: <span id="bwVal2">--</span></span>
             <button type="button" class="btn-scan" id="fullScanBtn">Full Scan</button>
+            <button type="button" class="btn-scan-exit" id="exitScanBtn" style="display:none">Exit band scan</button>
           </div>
           <canvas id="sigCanvas"></canvas>
           <div id="scanMarkerTooltip" class="scan-marker-tooltip" aria-hidden="true"></div>
@@ -881,16 +886,13 @@
     var sigId = null;
     var lastSigDraw = 0;
     var canvasCtx = null;
-    // Signal history: [{rssi, snr, ts}, ...], newest at end; max 1 minute
+    // Signal history: [{rssi, snr, ts}, ...], newest at end; max 30 seconds
     var signalHistory = [];
     var signalHistoryMaxLen = 400;
-    var SIGNAL_HISTORY_MS = 60000;
+    var SIGNAL_HISTORY_MS = 30000;
     var seekingDirection = 0;  // -1 = seeking down, 0 = none, 1 = seeking up
-    var markerData = [];  // Band-scan markers only: [{ freq, rssi, snr }, ...]
-    var markerBandIndex = null;  // band index the markers belong to (avoids drawing HF kHz on FM scale)
     var scanInProgress = false;
-    var webScanOwned = false;  // true when scan was started from this web UI
-    var scanData = null;  // { startFreq, step, count, band, points: [{rssi,snr},...] } from /api/scan
+    var scanData = null;  // { startFreq, step, count, points: [{rssi,snr},...] } from /api/scan
     var scanBandIndex = null;  // band index the scan was taken on (avoids drawing HF kHz on FM scale)
     var lastBandState = null;  // { bandMin, span, drawW, padX, w, isFm, markerFreqs } for canvas hit-test
     var pendingTuneFreq = null;
@@ -957,7 +959,6 @@
     // UI UPDATE
     // ============================================
     function updateUI(s) {
-      var prevStatus = lastStatus;
       lastStatus = s;
       var isFM = s.mode === 0;
       var freqDisp = document.getElementById('freqDisp');
@@ -1022,10 +1023,9 @@
       // AVC visibility
       document.getElementById('avcCh').classList.toggle('hidden', !s.avcAvail);
 
-      // RDS display: PS (0) or All (EU) (6) — always visible, disabled when not FM
+      // RDS display: PS (0) or All (EU) (6) — only when FM
       var rdsWrap = document.querySelector('.rds-toggle-wrap');
-      var isFM = (s.mode === 0);
-      if (rdsWrap) rdsWrap.classList.toggle('disabled', !isFM);
+      if (rdsWrap) rdsWrap.style.display = (s.mode === 0) ? '' : 'none';
       var rdsModeIdx = (s.rdsModeIdx !== undefined) ? s.rdsModeIdx : 0;
       var rdsAllEu = (rdsModeIdx === 6);
       var rdsLabel = document.getElementById('rdsModeLabel');
@@ -1058,53 +1058,27 @@
       for (var i = 0; i < btns.length; i++) {
         btns[i].classList.toggle('active', parseInt(btns[i].dataset.idx) === s.band);
       }
-      if (s.seeking) {
-        seekingDirection = (s.seekDirection > 0) ? 1 : (s.seekDirection < 0) ? -1 : (seekingDirection || 1);
-      } else {
-        seekingDirection = 0;
-      }
+      if (s.seeking) seekingDirection = (s.seekDirection > 0) ? 1 : (s.seekDirection < 0) ? -1 : (seekingDirection || 1);
+      else seekingDirection = 0;
       updateSeekButtonLabels();
       /* Only show sweep/STOP when scan is actually running; once scanHasData, we're in "results" mode */
       scanInProgress = !!s.inScanMode && !s.scanHasData;
 
-      // Safety net: if a web-started scan reaches "results" but remains in scan mode, request exit.
-      var scanFinishedNow = !!(prevStatus && prevStatus.inScanMode && !prevStatus.scanHasData && s.scanHasData);
-      if (scanFinishedNow && webScanOwned && s.inScanMode) {
-        apiPost('/api/scan', { action: 'exit' });
-      }
-      if (prevStatus && prevStatus.inScanMode && !s.inScanMode) webScanOwned = false;
-
-      var hadScanData = !!(prevStatus && prevStatus.scanHasData);
-      var shouldFetchScan = s.scanHasData && (!hadScanData || !scanData);
-      if (shouldFetchScan) {
+      if (s.scanHasData) {
         fetch('/api/scan').then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {
           scanData = d;
-          scanBandIndex = (d && d.band !== undefined) ? d.band : null;
-          // Replace markerData with fresh scan data
-          if (d && d.points && d.points.length && scanBandIndex !== null) {
-            markerData = [];
-            var startFreq = d.startFreq;
-            var step = d.step;
-            for (var i = 0; i < d.points.length; i++) {
-              markerData.push({
-                freq: startFreq + i * step,
-                rssi: d.points[i].rssi,
-                snr: d.points[i].snr
-              });
-            }
-            markerBandIndex = scanBandIndex;
-          }
+          scanBandIndex = (s && s.band !== undefined) ? s.band : null;
         }).catch(function() {});
-      } else if (!s.scanHasData) {
+      } else {
         scanData = null;
         scanBandIndex = null;
-        markerData = [];
-        markerBandIndex = null;
       }
       var fullBtn = document.getElementById('fullScanBtn');
-      if (fullBtn) fullBtn.textContent = s.inScanMode ? 'STOP' : 'Full Scan';
+      var exitBtn = document.getElementById('exitScanBtn');
+      if (fullBtn) fullBtn.textContent = scanInProgress ? 'STOP' : 'Full Scan';
+      if (exitBtn) exitBtn.style.display = s.inScanMode ? '' : 'none';
 
-      // Append to signal history (max 1 min); trim by time so it scrolls off
+      // Append to signal history (max 30 sec); trim by time so it scrolls off
       var cv = document.getElementById('sigCanvas');
       if (cv && cv.offsetWidth) signalHistoryMaxLen = Math.max(100, cv.offsetWidth);
       var now = Date.now();
@@ -1391,17 +1365,19 @@
       updateSeekButtonLabels();
 
       document.getElementById('fullScanBtn').onclick = function() {
-        var inScanMode = !!(lastStatus && lastStatus.inScanMode);
-        if (inScanMode) {
-          webScanOwned = false;
+        if (scanInProgress) {
           apiPost('/api/scan', { action: 'stop' });
+          scanInProgress = false;
         } else {
-          webScanOwned = true;
-          apiPost('/api/scan', { action: 'start' }).then(function(r) {
-            if (!r || !r.ok) webScanOwned = false;
-          });
+          apiPost('/api/scan', { action: 'start' });
+          scanInProgress = true;
         }
+        this.textContent = scanInProgress ? 'STOP' : 'Full Scan';
       };
+      document.getElementById('exitScanBtn').onclick = function() {
+        apiPost('/api/scan', { action: 'exit' });
+      };
+
       document.getElementById('stepLeftInfo').onclick = function() { apiPost('/api/step', {direction:-1}); };
       document.getElementById('stepRightInfo').onclick = function() { apiPost('/api/step', {direction:1}); };
       document.getElementById('bwLeftInfo').onclick = function() { apiPost('/api/bandwidth', {direction:-1}); };
@@ -1427,8 +1403,7 @@
       };
 
       document.getElementById('rdsModeBtn').onclick = function() {
-        if (!lastStatus || lastStatus.mode !== 0) return; // Only works on FM
-        var next = (lastStatus.rdsModeIdx === 6) ? 0 : 6;
+        var next = (lastStatus && lastStatus.rdsModeIdx === 6) ? 0 : 6;
         apiPost('/api/rds', { mode: next });
       };
 
@@ -1575,91 +1550,39 @@
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Band map lines (red=broadcast, blue=amateur) - only for MW/SW, not FM
-      if (opts && opts.bandMap && !isFm) {
-        ctx.lineWidth = 2;
-        // Draw broadcast bands (red)
-        if (opts.bandMap.broadcast && Array.isArray(opts.bandMap.broadcast)) {
-          ctx.strokeStyle = '#F80000'; // red (matches signalscale UI)
-          for (var i = 0; i < opts.bandMap.broadcast.length; i++) {
-            var seg = opts.bandMap.broadcast[i];
-            if (!Array.isArray(seg) || seg.length < 2) continue;
-            var segMin = seg[0], segMax = seg[1];
-            // Clip segment to visible band range
-            var visMin = Math.max(segMin, bandMin);
-            var visMax = Math.min(segMax, bandMax);
-            if (visMin >= visMax) continue;
-            var x1 = padX + ((visMin - bandMin) / span) * drawW;
-            var x2 = padX + ((visMax - bandMin) / span) * drawW;
-            x1 = Math.max(padX, Math.min(w - padX, x1));
-            x2 = Math.max(padX, Math.min(w - padX, x2));
-            ctx.beginPath();
-            ctx.moveTo(x1, lineY);
-            ctx.lineTo(x2, lineY);
-            ctx.stroke();
-          }
-        }
-        // Draw amateur bands (blue)
-        if (opts.bandMap.amateur && Array.isArray(opts.bandMap.amateur)) {
-          ctx.strokeStyle = '#0066FF'; // blue (matches signalscale UI)
-          for (var i = 0; i < opts.bandMap.amateur.length; i++) {
-            var seg = opts.bandMap.amateur[i];
-            if (!Array.isArray(seg) || seg.length < 2) continue;
-            var segMin = seg[0], segMax = seg[1];
-            // Clip segment to visible band range
-            var visMin = Math.max(segMin, bandMin);
-            var visMax = Math.min(segMax, bandMax);
-            if (visMin >= visMax) continue;
-            var x1 = padX + ((visMin - bandMin) / span) * drawW;
-            var x2 = padX + ((visMax - bandMin) / span) * drawW;
-            x1 = Math.max(padX, Math.min(w - padX, x1));
-            x2 = Math.max(padX, Math.min(w - padX, x2));
-            ctx.beginPath();
-            ctx.moveTo(x1, lineY);
-            ctx.lineTo(x2, lineY);
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Band-scan markers only
-      var markersMatchBand = (lastStatus && markerBandIndex !== null && lastStatus.band === markerBandIndex);
-      if (markerData && markerData.length && markersMatchBand) {
-        // Calculate RSSI baseline for visible range
+      // Scan markers: only for the band that was scanned; freq scale is that band's (SW = kHz, FM = 0.01 MHz)
+      var scanMatchesBand = (lastStatus && scanBandIndex !== null && lastStatus.band === scanBandIndex);
+      if (scanData && scanData.points && scanData.points.length && scanMatchesBand) {
+        var pts = scanData.points;
+        var startFreq = scanData.startFreq;
+        var step = scanData.step;
         var rssiSum = 0, rssiN = 0;
-        for (var i = 0; i < markerData.length; i++) {
-          var f = markerData[i].freq;
-          if (f >= bandMin && f <= bandMax) {
-            rssiSum += markerData[i].rssi;
-            rssiN++;
-          }
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
+          if (f >= bandMin && f <= bandMax) { rssiSum += pts[i].rssi; rssiN++; }
         }
         var rssiBaseline = rssiN > 0 ? rssiSum / rssiN : 0;
-        
-        // Find max level for normalization
         var maxLevel = 0;
-        for (var i = 0; i < markerData.length; i++) {
-          var f = markerData[i].freq;
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
           if (f < bandMin || f > bandMax) continue;
-          var r = markerData[i].rssi;
-          var s = markerData[i].snr;
+          var r = pts[i].rssi;
+          var s = pts[i].snr;
           var above = (r > rssiBaseline) ? (r - rssiBaseline) : 0;
           var level = (above > s) ? above : s;
           if (level > maxLevel) maxLevel = level;
         }
         if (maxLevel <= 0) maxLevel = 1;
-        
-        // Draw all markers
         var barMaxH = Math.min(20, Math.floor(hTop * 0.35));
         var markerFreqs = [];
-        ctx.fillStyle = '#ff6b35';  // Unified color for all markers
-        for (var i = 0; i < markerData.length; i++) {
-          var f = markerData[i].freq;
+        ctx.fillStyle = '#4ade80';
+        for (var i = 0; i < pts.length; i++) {
+          var f = startFreq + i * step;
           if (f < bandMin || f > bandMax) continue;
           var x = padX + ((f - bandMin) / span) * drawW;
           if (x < padX || x > w - padX) continue;
-          var r = markerData[i].rssi;
-          var s = markerData[i].snr;
+          var r = pts[i].rssi;
+          var s = pts[i].snr;
           var above = (r > rssiBaseline) ? (r - rssiBaseline) : 0;
           var level = (above > s) ? above : s;
           var norm = level / maxLevel;

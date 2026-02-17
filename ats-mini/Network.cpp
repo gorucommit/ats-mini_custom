@@ -267,7 +267,6 @@ static bool wifiConnect()
   loginUsername = prefs.getString("loginusername", "");
   loginPassword = prefs.getString("loginpassword", "");
 
-  // Try connecting to known WiFi networks
   for(int j=0 ; (j<3) ; j++)
   {
     char nameSSID[16], namePASS[16];

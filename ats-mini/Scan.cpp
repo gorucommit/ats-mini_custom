@@ -30,6 +30,7 @@ static uint8_t  scanMinRSSI;
 static uint8_t  scanMaxRSSI;
 static uint8_t  scanMinSNR;
 static uint8_t  scanMaxSNR;
+static uint8_t  scanBandIdx = 0xFF;  // Band index scan was performed on (0xFF = invalid/no scan)
 
 static inline uint8_t min(uint8_t a, uint8_t b) { return(a<b? a:b); }
 static inline uint8_t max(uint8_t a, uint8_t b) { return(a>b? a:b); }
@@ -41,6 +42,11 @@ bool scanHasData(void)
 
 float scanGetRSSI(uint16_t freq)
 {
+  // Only return scan data if current band matches the band that was scanned
+  // Prevents drawing SW scan markers on FM band (e.g., 7600 kHz appearing as 76.00 MHz)
+  if(scanBandIdx == 0xFF || scanBandIdx != bandIdx)
+    return(0.0);
+  
   // Input frequency must be in range of existing data
   if((scanStatus!=SCAN_DONE) || (freq<scanStartFreq) || (freq>=scanStartFreq+scanStep*scanCount))
     return(0.0);
@@ -55,6 +61,11 @@ float scanGetRSSI(uint16_t freq)
 
 float scanGetSNR(uint16_t freq)
 {
+  // Only return scan data if current band matches the band that was scanned
+  // Prevents drawing SW scan markers on FM band (e.g., 7600 kHz appearing as 76.00 MHz)
+  if(scanBandIdx == 0xFF || scanBandIdx != bandIdx)
+    return(0.0);
+  
   // Input frequency must be in range of existing data
   if((scanStatus!=SCAN_DONE) || (freq<scanStartFreq) || (freq>=scanStartFreq+scanStep*scanCount))
     return(0.0);
@@ -77,6 +88,7 @@ static void scanInit(uint16_t centerFreq, uint16_t step)
   scanMaxSNR  = 0;
   scanStatus  = SCAN_RUN;
   scanTime    = millis();
+  scanBandIdx = bandIdx;  // Store current band index to prevent cross-band scan data display
 
   const Band *band = getCurrentBand();
   int freq = scanStep * (centerFreq / scanStep - SCAN_POINTS / 2);
@@ -171,6 +183,12 @@ uint8_t scanGetPointSNR(uint16_t i)
 {
   if(i >= scanCount) return 0;
   return scanData[i].snr;
+}
+
+uint8_t scanGetBandIndex(void)
+{
+  if(scanStatus != SCAN_DONE) return 0xFF;
+  return scanBandIdx;
 }
 
 //

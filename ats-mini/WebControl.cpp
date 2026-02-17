@@ -96,6 +96,9 @@ static portMUX_TYPE cmdQueueMux = portMUX_INITIALIZER_UNLOCKED;
 // Indexed by (cmdType - WEB_CMD_VOLUME) for batchable commands only
 static volatile uint32_t lastBatchTime[7];  // Last enqueue time per batchable cmd type
 static volatile uint8_t lastBatchIndex[7];  // Queue index of last batched cmd (0xFF = not in queue)
+// Web scan session flags (shared between async handlers and main loop)
+static volatile bool webScanStartPending = false;  // Web start requested and queued
+static volatile bool webScanCancelPending = false; // STOP requested before queued start begins
 
 // Check if command type is batchable (replace old with new within time window)
 static bool isBatchable(WebCmdType cmd)
@@ -606,6 +609,7 @@ static void processCommand(const WebCommand &cmd)
       webSeekDirection = (int8_t)dir;
       currentCmd = CMD_SEEK;  // Set state so SSE broadcasts seeking:true
       statusDirty = true;     // Force immediate broadcast before blocking seek
+      lastBroadcast = 0;      // Bypass throttle for immediate pre-seek update
       webControlBroadcastStatus();  // Broadcast seeking state to web clients
       doSeek(dir, dir);
       currentCmd = CMD_NONE;  // Clear seek state after completion
@@ -675,32 +679,76 @@ static void processCommand(const WebCommand &cmd)
       }
       break;
       
-    case WEB_CMD_SCAN_START: {
+    case WEB_CMD_SCAN_START:
+    {
+      bool cancelStart = false;
+      portENTER_CRITICAL(&cmdQueueMux);
+      cancelStart = webScanCancelPending;
+      if(cancelStart)
+      {
+        webScanCancelPending = false;
+        webScanStartPending = false;
+      }
+      portEXIT_CRITICAL(&cmdQueueMux);
+      if(cancelStart)
+      {
+        currentCmd = CMD_NONE;
+        break;
+      }
+
       currentCmd = CMD_SCAN;
       clearStationInfo();
       rssi = snr = 0;
       cachedScanHasData = false;  // Ensure cache reflects "scanning" state before broadcast
       prevScanHasData = false;    // Reset prev state to prevent false state-change detection
-      statusDirty = true;     // Force immediate broadcast before blocking scan
+      statusDirty = true;         // Force immediate broadcast before blocking scan
+      lastBroadcast = 0;          // Bypass throttle for immediate pre-scan update
       webControlBroadcastStatus();  // Broadcast inScanMode:true to web clients
+
+      // STOP can arrive while start is queued/being prepared. Honor it before blocking scanRun().
+      portENTER_CRITICAL(&cmdQueueMux);
+      cancelStart = webScanCancelPending;
+      if(cancelStart)
+      {
+        webScanCancelPending = false;
+        webScanStartPending = false;
+      }
+      portEXIT_CRITICAL(&cmdQueueMux);
+      if(cancelStart)
+      {
+        currentCmd = CMD_NONE;
+        break;
+      }
+
       // Use current step, with MW-specific logic for 9kHz (Europe) vs 10kHz (US)
       uint16_t scanStep = getCurrentStep()->step;
       Band *band = getCurrentBand();
-      if (band->bandType == MW_BAND_TYPE && currentMode == AM) {
+      if(band->bandType == MW_BAND_TYPE && currentMode == AM)
+      {
         // If step is not 9k or 10k, prefer 9k for MW (Europe standard)
-        if (scanStep != 9 && scanStep != 10) {
+        if(scanStep != 9 && scanStep != 10)
+        {
           scanStep = 9;  // Default to 9k for MW if not explicitly set
         }
       }
       scanRun(currentFrequency, scanStep);
-      // After scan completes, update cache immediately so next broadcast reflects scan completion
-      // Note: currentCmd remains CMD_SCAN so UI can show scan results overlay
+
+      // Keep scan data, but auto-exit scan mode for web-initiated scans.
       cachedScanHasData = scanHasData();
+      currentCmd = CMD_NONE;
+      portENTER_CRITICAL(&cmdQueueMux);
+      webScanStartPending = false;
+      webScanCancelPending = false;
+      portEXIT_CRITICAL(&cmdQueueMux);
       break;
     }
       
     case WEB_CMD_SCAN_EXIT:
       currentCmd = CMD_NONE;
+      portENTER_CRITICAL(&cmdQueueMux);
+      webScanStartPending = false;
+      webScanCancelPending = false;
+      portEXIT_CRITICAL(&cmdQueueMux);
       break;
       
     case WEB_CMD_RDS_MODE:
@@ -766,6 +814,7 @@ static void handleGetScan(AsyncWebServerRequest *request)
   uint16_t startFreq = scanGetStartFreq();
   uint16_t step = scanGetStep();
   uint16_t count = scanGetCount();
+  uint8_t scanBand = scanGetBandIndex();
   if(count == 0)
   {
     request->send(404, "application/json", "{\"ok\":false,\"error\":\"No scan data\"}");
@@ -779,6 +828,8 @@ static void handleGetScan(AsyncWebServerRequest *request)
   json += step;
   json += ",\"count\":";
   json += count;
+  json += ",\"band\":";
+  json += scanBand;
   json += ",\"points\":[";
   for(uint16_t i = 0; i < count; i++)
   {
@@ -960,7 +1011,15 @@ static void handleScan(AsyncWebServerRequest *request, const char *body)
   if(body && strstr(body, "\"action\":\"stop\""))
   {
     seekStop = true;  // Stops running scan (same as seek stop)
-    sendOK(request);
+    // Stop means stop+exit for web UI semantics.
+    portENTER_CRITICAL(&cmdQueueMux);
+    if(webScanStartPending)
+      webScanCancelPending = true;  // Cancel queued-but-not-started scan
+    portEXIT_CRITICAL(&cmdQueueMux);
+    if(cmdEnqueue(WEB_CMD_SCAN_EXIT))
+      sendOK(request);
+    else
+      sendError(request, 503, "Command queue full");
     return;
   }
   if(body && strstr(body, "\"action\":\"exit\""))
@@ -974,7 +1033,13 @@ static void handleScan(AsyncWebServerRequest *request, const char *body)
   if(body && strstr(body, "\"action\":\"start\""))
   {
     if(cmdEnqueue(WEB_CMD_SCAN_START))
+    {
+      portENTER_CRITICAL(&cmdQueueMux);
+      webScanStartPending = true;
+      webScanCancelPending = false;
+      portEXIT_CRITICAL(&cmdQueueMux);
       sendOK(request);
+    }
     else
       sendError(request, 503, "Command queue full");
     return;

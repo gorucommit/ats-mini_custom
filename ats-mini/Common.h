@@ -194,6 +194,7 @@ uint16_t scanGetStep(void);
 uint16_t scanGetCount(void);
 uint8_t scanGetPointRSSI(uint16_t i);
 uint8_t scanGetPointSNR(uint16_t i);
+uint8_t scanGetBandIndex(void);
 
 // Station.c
 const char *getStationName();
