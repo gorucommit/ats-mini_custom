@@ -255,8 +255,9 @@ static volatile uint8_t cachedRdsModeIdx = 0;
 static volatile uint8_t cachedStepIdx = 0;
 static volatile uint8_t cachedBwIdx = 0;
 
-// Strategy 1: Cached JSON string
-static char cachedJson[JSON_STATUS_SIZE];
+// Strategy 1: Cached JSON string (double-buffer: main loop writes, async only reads)
+static char cachedJson[2][JSON_STATUS_SIZE];
+static volatile uint8_t statusCacheIndex = 0;  // which buffer is current (0 or 1)
 static volatile bool jsonCacheValid = false;
 
 // Previous state for change detection
@@ -306,8 +307,9 @@ static void jsonEscapeString(char *dest, const char *src, size_t maxLen)
 }
 
 //=============================================================================
-// JSON Builders (read-only access to globals - safe from any task)
-// Note: rx.getCurrentPilot() replaced with cachedStereo to avoid I2C call
+// JSON Builders
+// buildStatusJSON() must ONLY be called from main loop (webControlBroadcastStatus).
+// It reads radio/UI globals without synchronization; rx.getCurrentPilot replaced with cachedStereo.
 //=============================================================================
 
 static String buildStatusJSON()
@@ -718,7 +720,13 @@ static void handleGetOptions(AsyncWebServerRequest *request)
 
 static void handleGetStatus(AsyncWebServerRequest *request)
 {
-  request->send(200, "application/json", buildStatusJSON());
+  // Only send main-loop-built snapshot; never call buildStatusJSON() from async task
+  if(jsonCacheValid) {
+    uint8_t idx = statusCacheIndex;
+    request->send(200, "application/json", cachedJson[idx]);
+  } else {
+    request->send(503, "application/json", "{\"ok\":false,\"error\":\"status not ready\"}");
+  }
 }
 
 static void handleGetMemories(AsyncWebServerRequest *request)
@@ -1283,42 +1291,45 @@ void webControlProcessCommands()
 
 void webControlBroadcastStatus()
 {
-  // Throttle SSE broadcasts
+  // Throttle: run at most every BROADCAST_INTERVAL_MS
   uint32_t now = millis();
   if((now - lastBroadcast) < BROADCAST_INTERVAL_MS) return;
-  
-  // Strategy 1: Check if state changed (uses cached values - Strategy 2)
-  if(!hasStateChanged()) {
-    // State unchanged - use cached JSON if available and clients connected
-    if(jsonCacheValid && events.count() > 0) {
-      events.send(cachedJson, "status", millis());
-      lastBroadcast = now;
-      return;
-    }
-    // No cache or no clients - nothing to do
+
+  // Initial build or after invalidate: main loop builds once so GET/onConnect have a snapshot
+  if(!jsonCacheValid) {
+    String json = buildStatusJSON();
+    size_t len = (json.length() < JSON_STATUS_SIZE - 1) ? json.length() : (JSON_STATUS_SIZE - 1);
+    uint8_t writeIdx = 1 - statusCacheIndex;
+    memcpy(cachedJson[writeIdx], json.c_str(), len);
+    cachedJson[writeIdx][len] = '\0';
+    statusCacheIndex = writeIdx;
+    updatePrevState();
+    jsonCacheValid = true;
+    lastBroadcast = now;
+    if(events.count() > 0)
+      events.send(cachedJson[statusCacheIndex], "status", millis());
     return;
   }
-  
-  // State changed - rebuild JSON
-  if(events.count() > 0) {
-    String json = buildStatusJSON();  // Uses optimized building (Strategy 4) and cached values (Strategy 2)
-    
-    // Strategy 1: Cache the JSON string
-    size_t jsonLen = json.length();
-    if(jsonLen < JSON_STATUS_SIZE) {
-      strncpy(cachedJson, json.c_str(), JSON_STATUS_SIZE - 1);
-      cachedJson[JSON_STATUS_SIZE - 1] = '\0';
-      jsonCacheValid = true;
-    } else {
-      // JSON too large - can't cache (shouldn't happen)
-      jsonCacheValid = false;
-    }
-    
-    events.send(json.c_str(), "status", millis());
+
+  // State changed: rebuild and update cache (double-buffer: write to inactive then flip)
+  if(hasStateChanged()) {
+    String json = buildStatusJSON();
+    size_t len = (json.length() < JSON_STATUS_SIZE - 1) ? json.length() : (JSON_STATUS_SIZE - 1);
+    uint8_t writeIdx = 1 - statusCacheIndex;
+    memcpy(cachedJson[writeIdx], json.c_str(), len);
+    cachedJson[writeIdx][len] = '\0';
+    statusCacheIndex = writeIdx;
+    updatePrevState();
+    jsonCacheValid = true;
+    lastBroadcast = now;
+    if(events.count() > 0)
+      events.send(cachedJson[statusCacheIndex], "status", millis());
+    return;
   }
-  
-  // Update previous state (updates cached function results - Strategy 2, invalidates JSON cache - Strategy 1)
-  updatePrevState();
+
+  // No state change, cache valid: send current snapshot to SSE clients if any
+  if(events.count() > 0)
+    events.send(cachedJson[statusCacheIndex], "status", millis());
   lastBroadcast = now;
 }
 
@@ -1356,11 +1367,13 @@ void webControlInit(AsyncWebServer &server)
   cachedStepIdx = bands[bandIdx].currentStepIdx;
   cachedBwIdx = bands[bandIdx].bandwidthIdx;
   
-  // Strategy 1: Initialize JSON cache as invalid (will be built on first broadcast)
+  // Strategy 1: Initialize JSON cache as invalid (main loop will build on first throttled tick)
   jsonCacheValid = false;
-  cachedJson[0] = '\0';
+  statusCacheIndex = 0;
+  cachedJson[0][0] = '\0';
+  cachedJson[1][0] = '\0';
   
-  // SSE endpoint
+  // SSE endpoint: send only main-loop-built snapshot; never call buildStatusJSON() from async
   events.onConnect([](AsyncEventSourceClient *client)
   {
     if(events.count() > BROADCAST_MAX_CLIENTS)
@@ -1368,21 +1381,11 @@ void webControlInit(AsyncWebServer &server)
       client->close();
       return;
     }
-    
-    // Send current state on connect
-    // Strategy 1: Use cached JSON if available, otherwise build fresh
     if(jsonCacheValid) {
-      client->send(cachedJson, "status", millis());
+      uint8_t idx = statusCacheIndex;
+      client->send(cachedJson[idx], "status", millis());
     } else {
-      String json = buildStatusJSON();
-      client->send(json.c_str(), "status", millis());
-      // Cache it for next time
-      size_t jsonLen = json.length();
-      if(jsonLen < JSON_STATUS_SIZE) {
-        strncpy(cachedJson, json.c_str(), JSON_STATUS_SIZE - 1);
-        cachedJson[JSON_STATUS_SIZE - 1] = '\0';
-        jsonCacheValid = true;
-      }
+      client->send("{}", "status", millis());
     }
   });
   server.addHandler(&events);
