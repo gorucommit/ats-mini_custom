@@ -679,6 +679,8 @@ static void processCommand(const WebCommand &cmd)
       currentCmd = CMD_SCAN;
       clearStationInfo();
       rssi = snr = 0;
+      cachedScanHasData = false;  // Ensure cache reflects "scanning" state before broadcast
+      prevScanHasData = false;    // Reset prev state to prevent false state-change detection
       statusDirty = true;     // Force immediate broadcast before blocking scan
       webControlBroadcastStatus();  // Broadcast inScanMode:true to web clients
       // Use current step, with MW-specific logic for 9kHz (Europe) vs 10kHz (US)
@@ -691,6 +693,9 @@ static void processCommand(const WebCommand &cmd)
         }
       }
       scanRun(currentFrequency, scanStep);
+      // After scan completes, update cache immediately so next broadcast reflects scan completion
+      // Note: currentCmd remains CMD_SCAN so UI can show scan results overlay
+      cachedScanHasData = scanHasData();
       break;
     }
       
