@@ -1077,7 +1077,7 @@
       }
       var fullBtn = document.getElementById('fullScanBtn');
       var exitBtn = document.getElementById('exitScanBtn');
-      if (fullBtn) fullBtn.textContent = scanInProgress ? 'STOP' : 'Full Scan';
+      if (fullBtn) fullBtn.textContent = s.inScanMode ? 'STOP' : 'Full Scan';
       if (exitBtn) exitBtn.style.display = s.inScanMode ? '' : 'none';
 
       // Append to signal history (max 1 min); trim by time so it scrolls off
