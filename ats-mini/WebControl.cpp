@@ -48,7 +48,7 @@ static size_t s_controlPageGzLen = 0;
 
 #define BROADCAST_INTERVAL_MS    50   // Max 20 updates/second for snappier RSSI/SNR
 #define BROADCAST_MAX_CLIENTS   3     // Limit simultaneous SSE clients
-#define JSON_STATUS_SIZE        768   // Status JSON buffer size
+#define JSON_STATUS_SIZE        1024  // Status JSON buffer (must fit full payload or client parse fails; RDS visibility needs mode)
 #define JSON_OPTIONS_SIZE       4096  // Options JSON buffer size
 
 //=============================================================================
@@ -435,9 +435,9 @@ static String buildOptionsJSON()
   
   // Band map (broadcast/amateur segments in kHz; must match Draw.cpp getBandMapType for signal scale)
   json += "\"bandMap\":{\"broadcast\":[";
-  json += "[520,1602],[2300,2500],[3200,3400],[3900,4000],[4750,5060],[5800,6325],[7200,7450],[9400,9900],[11600,12100],[13570,13870],[15100,15800]";
+  json += "[520,1602],[2300,2500],[3200,3400],[3900,4000],[4750,5060],[5800,6325],[7200,7450],[9400,9900],[11600,12100],[13570,13870],[15100,15800],[17500,17900],[18900,19020],[21500,21850],[25600,26100]";
   json += "],\"amateur\":[";
-  json += "[1810,2000],[3500,3800],[5250,5450],[7000,7200],[10100,10150],[14000,14530]";
+  json += "[1810,2000],[3500,3800],[5250,5450],[7000,7200],[10100,10150],[14000,14530],[18070,18170],[21000,21500],[28000,29700]";
   json += "]},";
 
   // Modes array
@@ -670,12 +670,22 @@ static void processCommand(const WebCommand &cmd)
       }
       break;
       
-    case WEB_CMD_SCAN_START:
+    case WEB_CMD_SCAN_START: {
       currentCmd = CMD_SCAN;
       clearStationInfo();
       rssi = snr = 0;
-      scanRun(currentFrequency, 10);
+      // Use current step, with MW-specific logic for 9kHz (Europe) vs 10kHz (US)
+      uint16_t scanStep = getCurrentStep()->step;
+      Band *band = getCurrentBand();
+      if (band->bandType == MW_BAND_TYPE && currentMode == AM) {
+        // If step is not 9k or 10k, prefer 9k for MW (Europe standard)
+        if (scanStep != 9 && scanStep != 10) {
+          scanStep = 9;  // Default to 9k for MW if not explicitly set
+        }
+      }
+      scanRun(currentFrequency, scanStep);
       break;
+    }
       
     case WEB_CMD_SCAN_EXIT:
       currentCmd = CMD_NONE;
