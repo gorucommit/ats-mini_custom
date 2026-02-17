@@ -557,9 +557,18 @@ static void clickScan(bool longPress)
     currentCmd = CMD_SCAN;
     clearStationInfo();
     rssi = snr = 0;
+    // Use current step, with MW-specific logic for 9kHz (Europe) vs 10kHz (US)
+    uint16_t scanStep = getCurrentStep()->step;
+    Band *band = getCurrentBand();
+    if (band->bandType == MW_BAND_TYPE && currentMode == AM) {
+      // If step is not 9k or 10k, prefer 9k for MW (Europe standard)
+      if (scanStep != 9 && scanStep != 10) {
+        scanStep = 9;  // Default to 9k for MW if not explicitly set
+      }
+    }
     drawScreen();
     drawMessage("Scanning...");
-    scanRun(currentFrequency, 10);
+    scanRun(currentFrequency, scanStep);
   }
 }
 

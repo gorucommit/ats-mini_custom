@@ -604,7 +604,12 @@ static void processCommand(const WebCommand &cmd)
     {
       int16_t dir = cmd.param1 > 0 ? 1 : -1;
       webSeekDirection = (int8_t)dir;
+      currentCmd = CMD_SEEK;  // Set state so SSE broadcasts seeking:true
+      statusDirty = true;     // Force immediate broadcast before blocking seek
+      webControlBroadcastStatus();  // Broadcast seeking state to web clients
       doSeek(dir, dir);
+      currentCmd = CMD_NONE;  // Clear seek state after completion
+      webSeekDirection = 0;   // Reset web seek direction
       prefsRequestSave(SAVE_CUR_BAND);
       break;
     }
@@ -674,6 +679,8 @@ static void processCommand(const WebCommand &cmd)
       currentCmd = CMD_SCAN;
       clearStationInfo();
       rssi = snr = 0;
+      statusDirty = true;     // Force immediate broadcast before blocking scan
+      webControlBroadcastStatus();  // Broadcast inScanMode:true to web clients
       // Use current step, with MW-specific logic for 9kHz (Europe) vs 10kHz (US)
       uint16_t scanStep = getCurrentStep()->step;
       Band *band = getCurrentBand();
