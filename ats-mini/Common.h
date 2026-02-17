@@ -133,7 +133,7 @@ extern TFT_eSprite spr;
 extern TFT_eSPI tft;
 
 extern bool pushAndRotate;
-extern bool seekStop;
+extern volatile bool seekStop;
 extern uint8_t rssi;
 extern uint8_t snr;
 

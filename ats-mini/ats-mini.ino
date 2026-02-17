@@ -37,7 +37,7 @@ uint8_t disableAgc = 0;
 int8_t agcNdx = 0;
 int8_t softMuteMaxAttIdx = 4;
 
-bool seekStop = false;        // G8PTN: Added flag to abort seeking on rotary encoder detection
+volatile bool seekStop = false;  // G8PTN: Abort seek/scan on encoder; volatile for ISR→main visibility
 bool pushAndRotate = false;   // Push and rotate is active, ignore the long press
 static bool longPressSleepToggled = false;  // Toggle sleep only once per hold
 
