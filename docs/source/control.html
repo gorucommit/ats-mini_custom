@@ -280,8 +280,9 @@
       font-size: 0.8em; color: #6b5a4a; text-align: center;
       overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
     }
-    .rds-toggle-wrap { flex-shrink: 0; display: none; }
+    .rds-toggle-wrap { flex-shrink: 0; display: flex; }
     .rds-toggle-wrap .fader-toggle { margin-top: 0; font-size: 0.5em; padding: 4px 6px; }
+    .rds-toggle-wrap.disabled .fader-toggle { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
     .mascot-wrap {
       display: flex; justify-content: center; align-items: center;
       padding: 8px 0; flex-shrink: 0;
@@ -1023,9 +1024,10 @@
       // AVC visibility
       document.getElementById('avcCh').classList.toggle('hidden', !s.avcAvail);
 
-      // RDS display: PS (0) or All (EU) (6) — only when FM
+      // RDS display: PS (0) or All (EU) (6) — always visible, disabled when not FM
       var rdsWrap = document.querySelector('.rds-toggle-wrap');
-      if (rdsWrap) rdsWrap.style.display = (s.mode === 0) ? '' : 'none';
+      var isFM = (s.mode === 0);
+      if (rdsWrap) rdsWrap.classList.toggle('disabled', !isFM);
       var rdsModeIdx = (s.rdsModeIdx !== undefined) ? s.rdsModeIdx : 0;
       var rdsAllEu = (rdsModeIdx === 6);
       var rdsLabel = document.getElementById('rdsModeLabel');
@@ -1403,7 +1405,8 @@
       };
 
       document.getElementById('rdsModeBtn').onclick = function() {
-        var next = (lastStatus && lastStatus.rdsModeIdx === 6) ? 0 : 6;
+        if (!lastStatus || lastStatus.mode !== 0) return; // Only works on FM
+        var next = (lastStatus.rdsModeIdx === 6) ? 0 : 6;
         apiPost('/api/rds', { mode: next });
       };
 
@@ -1550,6 +1553,53 @@
       ctx.lineWidth = 1;
       ctx.stroke();
 
+      // Band map lines (red=broadcast, blue=amateur) - only for MW/SW, not FM
+      if (opts && opts.bandMap && !isFm) {
+        ctx.lineWidth = 2;
+        // Draw broadcast bands (red)
+        if (opts.bandMap.broadcast && Array.isArray(opts.bandMap.broadcast)) {
+          ctx.strokeStyle = '#F80000'; // red (matches signalscale UI)
+          for (var i = 0; i < opts.bandMap.broadcast.length; i++) {
+            var seg = opts.bandMap.broadcast[i];
+            if (!Array.isArray(seg) || seg.length < 2) continue;
+            var segMin = seg[0], segMax = seg[1];
+            // Clip segment to visible band range
+            var visMin = Math.max(segMin, bandMin);
+            var visMax = Math.min(segMax, bandMax);
+            if (visMin >= visMax) continue;
+            var x1 = padX + ((visMin - bandMin) / span) * drawW;
+            var x2 = padX + ((visMax - bandMin) / span) * drawW;
+            x1 = Math.max(padX, Math.min(w - padX, x1));
+            x2 = Math.max(padX, Math.min(w - padX, x2));
+            ctx.beginPath();
+            ctx.moveTo(x1, lineY);
+            ctx.lineTo(x2, lineY);
+            ctx.stroke();
+          }
+        }
+        // Draw amateur bands (blue)
+        if (opts.bandMap.amateur && Array.isArray(opts.bandMap.amateur)) {
+          ctx.strokeStyle = '#0066FF'; // blue (matches signalscale UI)
+          for (var i = 0; i < opts.bandMap.amateur.length; i++) {
+            var seg = opts.bandMap.amateur[i];
+            if (!Array.isArray(seg) || seg.length < 2) continue;
+            var segMin = seg[0], segMax = seg[1];
+            // Clip segment to visible band range
+            var visMin = Math.max(segMin, bandMin);
+            var visMax = Math.min(segMax, bandMax);
+            if (visMin >= visMax) continue;
+            var x1 = padX + ((visMin - bandMin) / span) * drawW;
+            var x2 = padX + ((visMax - bandMin) / span) * drawW;
+            x1 = Math.max(padX, Math.min(w - padX, x1));
+            x2 = Math.max(padX, Math.min(w - padX, x2));
+            ctx.beginPath();
+            ctx.moveTo(x1, lineY);
+            ctx.lineTo(x2, lineY);
+            ctx.stroke();
+          }
+        }
+      }
+
       // Scan markers: only for the band that was scanned; freq scale is that band's (SW = kHz, FM = 0.01 MHz)
       var scanMatchesBand = (lastStatus && scanBandIndex !== null && lastStatus.band === scanBandIndex);
       if (scanData && scanData.points && scanData.points.length && scanMatchesBand) {
@@ -1595,6 +1645,27 @@
         lastBandState = { bandMin: bandMin, span: span, drawW: drawW, padX: padX, w: w, isFm: isFm, markerFreqs: markerFreqs };
       } else {
         lastBandState = null;
+      }
+
+      // Seek markers: draw bar at current frequency when seeking (same logic as scan markers)
+      if (seekingDirection !== 0 && lastStatus && currentFreq >= bandMin && currentFreq <= bandMax) {
+        var seekX = padX + ((currentFreq - bandMin) / span) * drawW;
+        seekX = Math.max(padX, Math.min(w - padX, seekX));
+        if (seekX >= padX && seekX <= w - padX) {
+          // Use current RSSI/SNR for seek marker height (similar to scan marker logic)
+          var seekRssi = lastStatus.rssi || 0;
+          var seekSnr = lastStatus.snr || 0;
+          // Normalize to 0-1 range (RSSI max ~60, SNR max ~40)
+          var seekRssiNorm = Math.min(1, seekRssi / 60);
+          var seekSnrNorm = Math.min(1, seekSnr / 40);
+          var seekLevel = Math.max(seekRssiNorm, seekSnrNorm);
+          var barMaxH = Math.min(20, Math.floor(hTop * 0.35));
+          var seekBarH = 2 + (seekLevel * (barMaxH - 2));
+          if (seekBarH > 2) {
+            ctx.fillStyle = '#ff6b35'; // Orange color for seek marker
+            ctx.fillRect(Math.floor(seekX) - 1, lineY - seekBarH, 2, seekBarH);
+          }
+        }
       }
 
       // ---------- Bottom half: RSSI/SNR history, right-to-left (oldest left, newest right) ----------
