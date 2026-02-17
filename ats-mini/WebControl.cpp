@@ -1393,11 +1393,11 @@ void webControlInit(AsyncWebServer &server)
       client->close();
       return;
     }
+    // Only send on connect if we have a valid snapshot; otherwise the next 50 ms broadcast
+    // will be the first event (full status including mode), so RDS button shows when on FM.
     if(jsonCacheValid) {
       uint8_t idx = statusCacheIndex;
       client->send(cachedJson[idx], "status", millis());
-    } else {
-      client->send("{}", "status", millis());
     }
   });
   server.addHandler(&events);
