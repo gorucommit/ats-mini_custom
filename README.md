@@ -17,7 +17,7 @@ Tracks upstream with the following additions:
 
 Includes everything from `main`, plus:
 
-- **Web control** — Remote control UI at **http://atsmini.local/control** (or device IP). Full band/frequency/mode control, VU-style meters, scan spectrum display, faders for volume/squelch/AGC/AVC, band selector, and RDS display. Uses Server-Sent Events for live status and a command queue so radio changes run on the main loop. See `docs/WEB_CONTROL_REFERENCE.md` for API and integration details.
+- **Web control** — Remote control UI at **http://atsmini.local/control** (or device IP). Full band/frequency/mode control, VU-style meters, scan spectrum display, faders for volume/squelch/AGC/AVC, band selector, and RDS display. Uses Server-Sent Events for live status and a command queue so radio changes run on the main loop. See `docs/FORK_REFERENCE.md` for API and integration details.
 - **Startup time improvements** — SI4732 power-on is parallelized with display initialization; splash screen and backlight appear immediately; WiFi/BLE connection is deferred to run in the background instead of blocking `setup()`.
 - **Timer overflow safety** — All `millis()`-based timer variables changed from `long` to `uint32_t`.
 - **Scan RSSI/SNR fix** — Removed off-by-one error in `scanGetRSSI`/`scanGetSNR` that prevented the strongest signal from reaching full scale; added bounds clamping to `[0.0, 1.0]` and flat-signal divide-by-zero guard.
@@ -37,7 +37,7 @@ To embed the Web control page (and optional mascot image) into the firmware:
 
 ```bash
 python3 tools/embed_html.py docs/source/control.html ats-mini/control_html.h
-# Optional: add mascot image (resized if >3.5 KB to stay under 16 KB gzip)
+# Optional: add mascot image (resized if >3.5 KB to stay under CONTROL_PAGE_GZ_MAX)
 python3 tools/embed_html.py docs/source/control.html ats-mini/control_html.h --embed-image steampigg.png
 ```
 
@@ -54,7 +54,7 @@ Based on the following sources:
 
 ## Documentation
 
-- **Web control (this fork):** `docs/WEB_CONTROL_REFERENCE.md`
+- **Fork reference (single source of truth):** `docs/FORK_REFERENCE.md`
 - **Upstream hardware, software and flashing:** <https://esp32-si4732.github.io/ats-mini/>
 
 ## Discuss
