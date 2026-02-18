@@ -120,43 +120,6 @@ static bool showStationName(const char *stationName, bool isLong = false)
   return(false);
 }
 
-// Helper: Check if Radio Text contains end-of-message marker (0x0D)
-static bool hasEndOfMessage(const char *text)
-{
-  if(!text) return false;
-  for(int i = 0; i < 64 && text[i]; i++)
-  {
-    if(text[i] == 0x0D) return true;
-  }
-  return false;
-}
-
-// Helper: Check if string is mostly printable (quality check)
-static bool isValidRadioText(const char *text)
-{
-  if(!text || !text[0]) return false;
-  int printable = 0;
-  int total = 0;
-  for(int i = 0; i < 64 && text[i]; i++)
-  {
-    if(text[i] >= 32 || text[i] == 0x0D || text[i] == 0x0A)
-      printable++;
-    total++;
-  }
-  // Require at least 80% printable characters
-  return (total > 0 && (printable * 100 / total) >= 80);
-}
-
-// Helper: Get effective length (before 0x0D or end)
-static int getEffectiveLength(const char *text)
-{
-  if(!text) return 0;
-  int len = 0;
-  for(int i = 0; i < 64 && text[i] && text[i] != 0x0D; i++)
-    len++;
-  return len;
-}
-
 static bool showRadioText(const char *radioText, uint8_t width = 32)
 {
   bool changed = false;
@@ -166,48 +129,13 @@ static bool showRadioText(const char *radioText, uint8_t width = 32)
   // Must have text
   if(!radioText) return(false);
 
-  // PERSISTENCE: Only update if new text is "better" than current
-  // This prevents partial/scrolled text from overwriting good data
-  int currentLen = getEffectiveLength(bufRadioText);
-  bool currentHasEOM = hasEndOfMessage(bufRadioText);
-  int newLen = getEffectiveLength(radioText);
-  bool newHasEOM = hasEndOfMessage(radioText);
-  
-  // Quality check: reject obviously bad data
-  if(!isValidRadioText(radioText)) return(false);
-
   // Skip leading whitespace
-  int start;
-  for(start = 0; (start < 64) && radioText[start] && (radioText[start] <= ' '); start++);
-
-  // If nothing left after whitespace skip, don't update
-  if(!radioText[start]) return(false);
-
-  // PERSISTENCE RULE: Only replace if:
-  // 1. Current is empty, OR
-  // 2. New has EOM and current doesn't, OR
-  // 3. New is longer AND (current has no EOM OR new also has EOM)
-  // 4. Same length but new has EOM (prefer complete messages)
-  if(currentLen > 0)
-  {
-    bool shouldReplace = false;
-    
-    if(!currentHasEOM && newHasEOM)
-      shouldReplace = true;  // Prefer complete message
-    else if(newLen > currentLen && (!currentHasEOM || newHasEOM))
-      shouldReplace = true;  // Longer and not making things worse
-    else if(newLen == currentLen && newHasEOM && !currentHasEOM)
-      shouldReplace = true;  // Same length but now complete
-    else if(currentHasEOM && newHasEOM && newLen >= currentLen)
-      shouldReplace = true;  // Both complete, prefer longer/newer
-    
-    if(!shouldReplace) return(false);
-  }
+  for(i=0 ; (i<64) && radioText[i] && (radioText[i]<=' ') ; i++);
 
   // Terminate at 0x0D, split into lines by 0x0A
-  for(i = start, j = 0; (i < 64) && radioText[i] && (radioText[i] != 0x0D); i++)
+  for(j=0 ; (i<64) && radioText[i] && (radioText[i]!=0x0D) ; i++)
   {
-    if((radioText[i] == 0x0A) || ((radioText[i] == ' ') && (j >= width)))
+    if((radioText[i]==0x0A) || ((radioText[i]==' ') && (j>=width)))
     {
       c = '\0';
       j = 0;
@@ -218,20 +146,19 @@ static bool showRadioText(const char *radioText, uint8_t width = 32)
       j++;
     }
 
-    changed |= c != bufRadioText[i - start];
-    bufRadioText[i - start] = c;
+    changed |= c!=bufRadioText[i];
+    bufRadioText[i] = c;
   }
 
   // Skip trailing whitespace
-  int finalLen = i - start;
-  while((finalLen > 0) && (bufRadioText[finalLen - 1] <= ' ')) finalLen--;
+  while((i>0) && (bufRadioText[i-1]<=' ')) i--;
 
   // Check the end of the buffer for changes
-  changed |= bufRadioText[finalLen] || bufRadioText[finalLen + 1];
+  changed |= bufRadioText[i] || bufRadioText[i+1];
 
-  // Terminate multiline text with two zeros
-  bufRadioText[finalLen++] = '\0';
-  bufRadioText[finalLen++] = '\0';
+  // Terminate multitline text with two zeros
+  bufRadioText[i++] = '\0';
+  bufRadioText[i++] = '\0';
 
   // Done
   return(changed);
@@ -262,16 +189,8 @@ static bool showRdsProgramType(uint8_t pgmType, bool useRBDS = false)
 
 static bool showRdsPiCode(uint16_t rdsPiCode)
 {
-  if(rdsPiCode != piCode)
+  if(rdsPiCode!=piCode)
   {
-    // PI code changed - this is a new station, clear stale RT/PS
-    // This prevents showing previous station's text on new station
-    if(rdsPiCode != 0x0000 && piCode != 0x0000)
-    {
-      bufRadioText[0] = '\0';
-      bufRadioText[1] = '\0';
-      bufStationName[0] = '\0';
-    }
     piCode = rdsPiCode;
     return(true);
   }
@@ -284,8 +203,8 @@ static bool showRdsTime(const char *rdsTime)
   // If NTP time available, do not use RDS time
   if(!rdsTime || ntpIsAvailable()) return(false);
 
-  // The standard RDS time format is â€œHH:MMâ€.
-  // or sometimes more complex like â€œDD.MM.YY,HH:MMâ€.
+  // The standard RDS time format is “HH:MM”.
+  // or sometimes more complex like “DD.MM.YY,HH:MM”.
   const char *timeField = strstr(rdsTime, ":");
 
   // If we find a valid time format...
